@@ -1,10 +1,10 @@
 import Foundation
-import React
+
 import FamilyControls
 import SwiftUI
 
-@objc(LockControlModule)
-class LockControlModule: NSObject {
+@objc(LockControl)
+class LockControl: NSObject {
   
   @objc static func moduleName() -> String {
     return "LockControl"
@@ -17,12 +17,14 @@ class LockControlModule: NSObject {
   @objc(requestAuthorization:rejecter:)
   func requestAuthorization(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     if #available(iOS 15.0, *) {
-      Task {
-        do {
-          try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
-          resolve(true)
-        } catch {
-          reject("AUTH_ERROR", "Failed to request authorization", error)
+      DispatchQueue.main.async {
+        Task {
+          do {
+            try await AuthorizationCenter.shared.requestAuthorization(for: .individual)
+            resolve(true)
+          } catch {
+            reject("AUTH_ERROR", "Failed to request authorization: \(error.localizedDescription)", error)
+          }
         }
       }
     } else {
@@ -36,7 +38,7 @@ class LockControlModule: NSObject {
       let status = AuthorizationCenter.shared.authorizationStatus
       resolve(status.rawValue)
     } else {
-      resolve(0) // Not determined or not supported
+      resolve(0)
     }
   }
 
@@ -53,7 +55,6 @@ class LockControlModule: NSObject {
         let shouldPresent = Binding<Bool>(
             get: { true },
             set: { _ in 
-               // Dismiss
                rootViewController.dismiss(animated: true) {
                    resolve(true)
                }
@@ -63,7 +64,6 @@ class LockControlModule: NSObject {
         let pickerView = PickerView(isPresented: shouldPresent)
         let hostingController = UIHostingController(rootView: pickerView)
         hostingController.modalPresentationStyle = .formSheet
-        
         rootViewController.present(hostingController, animated: true)
       }
     } else {
@@ -74,8 +74,6 @@ class LockControlModule: NSObject {
   @objc(startLock:resolve:rejecter:)
   func startLock(_ duration: Double, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     if #available(iOS 15.0, *) {
-      // For MVP, locking applies the shield indefinitely until stopLock is called
-      // 'duration' is handled by the JS/RN side timer to call stopLock
       LockModel.shared.startLock()
       resolve(true)
     } else {

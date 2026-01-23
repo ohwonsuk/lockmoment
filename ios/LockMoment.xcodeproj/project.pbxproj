@@ -9,6 +9,10 @@
 /* Begin PBXBuildFile section */
 		0C80B921A6F3F58F76C31292 /* libPods-LockMoment.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-LockMoment.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		290053042F231B4400878DB0 /* LockMoment/PickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 290053032F231B4400878DB0 /* LockMoment/PickerView.swift */; };
+		293074B22F235CBC001B31D6 /* LockMoment/LockControlModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 293074AF2F235CBC001B31D6 /* LockMoment/LockControlModule.swift */; };
+		293074B32F235CBC001B31D6 /* LockMoment/LockModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 293074B02F235CBC001B31D6 /* LockMoment/LockModel.swift */; };
+		293074B72F235DA0001B31D6 /* LockMoment/LockControlModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 293074B62F235DA0001B31D6 /* LockMoment/LockControlModule.m */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		778EAA79B9012B8D8BA63FE5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
@@ -19,6 +23,11 @@
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = LockMoment/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = LockMoment/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = LockMoment/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		290053032F231B4400878DB0 /* LockMoment/PickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockMoment/PickerView.swift; sourceTree = "<group>"; };
+		290053082F231B5800878DB0 /* LockMoment-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "LockMoment-Bridging-Header.h"; sourceTree = "<group>"; };
+		293074AF2F235CBC001B31D6 /* LockMoment/LockControlModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockMoment/LockControlModule.swift; sourceTree = "<group>"; };
+		293074B02F235CBC001B31D6 /* LockMoment/LockModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockMoment/LockModel.swift; sourceTree = "<group>"; };
+		293074B62F235DA0001B31D6 /* LockMoment/LockControlModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LockMoment/LockControlModule.m; sourceTree = "<group>"; };
 		29451BF32F23102900F01565 /* LockMoment.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = LockMoment.entitlements; path = LockMoment/LockMoment.entitlements; sourceTree = "<group>"; };
 		3B4392A12AC88292D35C810B /* Pods-LockMoment.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-LockMoment.debug.xcconfig"; path = "Target Support Files/Pods-LockMoment/Pods-LockMoment.debug.xcconfig"; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-LockMoment.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-LockMoment.release.xcconfig"; path = "Target Support Files/Pods-LockMoment/Pods-LockMoment.release.xcconfig"; sourceTree = "<group>"; };
@@ -72,11 +81,16 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
+				293074B62F235DA0001B31D6 /* LockMoment/LockControlModule.m */,
+				293074AF2F235CBC001B31D6 /* LockMoment/LockControlModule.swift */,
+				293074B02F235CBC001B31D6 /* LockMoment/LockModel.swift */,
+				290053032F231B4400878DB0 /* LockMoment/PickerView.swift */,
 				13B07FAE1A68108700A75B9A /* LockMoment */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
+				290053082F231B5800878DB0 /* LockMoment-Bridging-Header.h */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -130,10 +144,11 @@
 		83CBB9F71A601CBA00E9B192 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
-				LastUpgradeCheck = 1210;
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 2620;
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
-						LastSwiftMigration = 1120;
+						LastSwiftMigration = 2620;
 					};
 				};
 			};
@@ -144,6 +159,12 @@
 			knownRegions = (
 				en,
 				Base,
+				ko,
+				ja,
+				fr,
+				nl,
+				it,
+				"zh-Hans",
 			);
 			mainGroup = 83CBB9F61A601CBA00E9B192;
 			productRefGroup = 83CBBA001A601CBA00E9B192 /* Products */;
@@ -256,7 +277,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				290053042F231B4400878DB0 /* LockMoment/PickerView.swift in Sources */,
+				293074B72F235DA0001B31D6 /* LockMoment/LockControlModule.m in Sources */,
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				293074B22F235CBC001B31D6 /* LockMoment/LockControlModule.swift in Sources */,
+				293074B32F235CBC001B31D6 /* LockMoment/LockModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -271,10 +296,9 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = LockMoment/LockMoment.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = QJJGFUHMHL;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = LockMoment/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -287,6 +311,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = LockMoment;
+				SWIFT_OBJC_BRIDGING_HEADER = "LockMoment-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
@@ -301,9 +326,8 @@
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = LockMoment/LockMoment.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = QJJGFUHMHL;
 				INFOPLIST_FILE = LockMoment/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -316,6 +340,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
 				PRODUCT_NAME = LockMoment;
+				SWIFT_OBJC_BRIDGING_HEADER = "LockMoment-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
 			};
@@ -352,8 +377,10 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				COPY_PHASE_STRIP = NO;
+				DEVELOPMENT_TEAM = QJJGFUHMHL;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = "";
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_DYNAMIC_NO_PIC = NO;
@@ -393,6 +420,7 @@
 				);
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
 				USE_HERMES = true;
 			};
@@ -429,8 +457,10 @@
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
 				COPY_PHASE_STRIP = YES;
+				DEVELOPMENT_TEAM = QJJGFUHMHL;
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				"EXCLUDED_ARCHS[sdk=iphonesimulator*]" = "";
 				GCC_C_LANGUAGE_STANDARD = gnu99;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -462,6 +492,8 @@
 				);
 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../node_modules/react-native";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
 				USE_HERMES = true;
 				VALIDATE_PRODUCT = YES;
 			};

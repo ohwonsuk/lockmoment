@@ -7,7 +7,6 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  SafeAreaView,
   StatusBar,
   StyleSheet,
   Text,
@@ -16,9 +15,21 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import {
+  SafeAreaProvider,
+  SafeAreaView,
+} from 'react-native-safe-area-context';
 import { NativeLockControl } from './src/services/NativeLockControl';
 
 function App(): React.JSX.Element {
+  return (
+    <SafeAreaProvider>
+      <AppContent />
+    </SafeAreaProvider>
+  );
+}
+
+function AppContent(): React.JSX.Element {
   const [isLocked, setIsLocked] = useState(false);
   const [hasPermission, setHasPermission] = useState(false);
 
@@ -79,6 +90,7 @@ function App(): React.JSX.Element {
   };
 
   const handleRequestPermission = async () => {
+    console.log("Requesting iOS Authorization...");
     if (Platform.OS === 'ios') {
       try {
         await NativeLockControl.requestAuthorization();

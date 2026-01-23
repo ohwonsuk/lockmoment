@@ -1,6 +1,7 @@
 import { NativeModules, Platform } from 'react-native';
 
 const { LockControl } = NativeModules;
+console.log("Native LockControl loaded:", !!LockControl);
 
 export interface LockControlInterface {
     checkAccessibilityPermission(): Promise<boolean>;
