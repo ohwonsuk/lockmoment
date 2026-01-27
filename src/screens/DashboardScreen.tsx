@@ -8,33 +8,25 @@ import { Typography } from '../components/Typography';
 import { NativeLockControl } from '../services/NativeLockControl';
 import { useAppNavigation } from '../navigation/NavigationContext';
 import { QuickLockPicker } from '../components/QuickLockPicker';
-
-const DUMMY_SCHEDULES = [
-    {
-        id: '1',
-        name: '아침 수업',
-        timeRange: '09:00 - 12:00',
-        days: ['월', '화', '수', '목', '금'],
-        isActive: true,
-    },
-    {
-        id: '2',
-        name: '오후 자습',
-        timeRange: '14:00 - 17:00',
-        days: ['월', '수', '금'],
-        isActive: false,
-    },
-];
+import { Icon } from '../components/Icon';
+import { StorageService, Schedule } from '../services/StorageService';
 
 export const DashboardScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
     const [isLocked, setIsLocked] = useState(false);
     const [hasPermission, setHasPermission] = useState(false);
     const [isPickerVisible, setIsPickerVisible] = useState(false);
+    const [schedules, setSchedules] = useState<Schedule[]>([]);
 
     useEffect(() => {
         checkStatus();
+        loadSchedules();
     }, []);
+
+    const loadSchedules = async () => {
+        const storedSchedules = await StorageService.getSchedules();
+        setSchedules(storedSchedules);
+    };
 
     const checkStatus = async () => {
         if (Platform.OS === 'android') {
@@ -68,10 +60,19 @@ export const DashboardScreen: React.FC = () => {
         }
     };
 
+    const handleToggleSchedule = async (id: string) => {
+        await StorageService.toggleScheduleActivity(id);
+        loadSchedules();
+    };
+
     return (
         <View style={styles.container}>
             <Header />
-            <ScrollView contentContainerStyle={styles.scrollContent}>
+            <ScrollView
+                style={styles.flex1}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+            >
                 <QuickLockCard onPress={handleQuickLock} />
 
                 <QuickLockPicker
@@ -82,14 +83,34 @@ export const DashboardScreen: React.FC = () => {
 
                 <View style={styles.sectionHeader}>
                     <Typography variant="h2" bold>예약 잠금</Typography>
-                    <TouchableOpacity style={styles.addButton}>
-                        <Typography color={Colors.primary} bold>+ 예약 추가</Typography>
+                    <TouchableOpacity style={styles.addButton} onPress={() => navigate('AddSchedule')}>
+                        <View style={styles.addButtonContent}>
+                            <Icon name="add" size={16} color={Colors.primary} />
+                            <Typography color={Colors.primary} bold style={styles.addButtonText}>예약 추가</Typography>
+                        </View>
                     </TouchableOpacity>
                 </View>
 
-                {DUMMY_SCHEDULES.map(item => (
-                    <ScheduleItem key={item.id} schedule={item} />
-                ))}
+                {schedules.length === 0 ? (
+                    <View style={styles.emptyState}>
+                        <Typography color={Colors.textSecondary}>설정된 예약이 없습니다.</Typography>
+                    </View>
+                ) : (
+                    schedules.map(item => (
+                        <ScheduleItem
+                            key={item.id}
+                            schedule={{
+                                id: item.id,
+                                name: item.name,
+                                timeRange: `${item.startTime} - ${item.endTime}`,
+                                days: item.days,
+                                isActive: item.isActive
+                            }}
+                            onPress={() => navigate('AddSchedule')}
+                            onToggle={handleToggleSchedule}
+                        />
+                    ))
+                )}
 
                 <View style={styles.footer}>
                     <TouchableOpacity>
@@ -106,6 +127,9 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: Colors.background,
     },
+    flex1: {
+        flex: 1,
+    },
     scrollContent: {
         paddingBottom: 40,
     },
@@ -119,12 +143,25 @@ const styles = StyleSheet.create({
     },
     addButton: {
         backgroundColor: '#1E293B',
-        paddingHorizontal: 15,
-        paddingVertical: 8,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
         borderRadius: 8,
+    },
+    addButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    addButtonText: {
+        fontSize: 14,
+    },
+    emptyState: {
+        padding: 40,
+        alignItems: 'center',
     },
     footer: {
         marginTop: 40,
+        marginBottom: 20,
         alignItems: 'center',
     },
 });

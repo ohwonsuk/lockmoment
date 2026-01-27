@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 
-export type Screen = 'Dashboard' | 'Settings' | 'Permissions' | 'History' | 'Locking';
+export type Screen = 'Dashboard' | 'Settings' | 'Permissions' | 'History' | 'Locking' | 'AddSchedule' | 'AppSelect';
 
 interface NavigationContextType {
     currentScreen: Screen;

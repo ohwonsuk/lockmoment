@@ -5,6 +5,8 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 import { PermissionsScreen } from '../screens/PermissionsScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
 import { LockingScreen } from '../screens/LockingScreen';
+import { AddScheduleScreen } from '../screens/AddScheduleScreen';
+import { AppSelectScreen } from '../screens/AppSelectScreen';
 import { Colors } from '../theme/Colors';
 import { useAppNavigation } from './NavigationContext';
 
@@ -23,6 +25,10 @@ export const AppNavigator: React.FC = () => {
                 return <HistoryScreen />;
             case 'Locking':
                 return <LockingScreen />;
+            case 'AddSchedule':
+                return <AddScheduleScreen />;
+            case 'AppSelect':
+                return <AppSelectScreen />;
             default:
                 return <DashboardScreen />;
         }

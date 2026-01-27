@@ -4,6 +4,7 @@ import { Typography } from './Typography';
 import { Colors } from '../theme/Colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppNavigation } from '../navigation/NavigationContext';
+import { Icon } from './Icon';
 
 interface Props {
     title?: string;
@@ -19,7 +20,7 @@ export const Header: React.FC<Props> = ({ title = "락모먼트", showBack = fal
             <View style={styles.leftContainer}>
                 {showBack && (
                     <TouchableOpacity style={styles.backButton} onPress={() => navigate('Dashboard')}>
-                        <Typography color={Colors.primary} bold>{"<"}</Typography>
+                        <Icon name="chevron-back" size={28} color={Colors.primary} />
                     </TouchableOpacity>
                 )}
                 <TouchableOpacity onPress={() => navigate('Dashboard')}>
@@ -32,20 +33,22 @@ export const Header: React.FC<Props> = ({ title = "락모먼트", showBack = fal
                     style={styles.iconButton}
                     onPress={() => navigate('Permissions')}
                 >
-                    <View style={[
-                        styles.shieldIcon,
-                        currentScreen === 'Permissions' && { borderColor: Colors.primary }
-                    ]} />
+                    <Icon
+                        name="shield-checkmark-outline"
+                        size={26}
+                        color={currentScreen === 'Permissions' ? Colors.primary : Colors.text}
+                    />
                 </TouchableOpacity>
 
                 <TouchableOpacity
                     style={styles.iconButton}
                     onPress={() => navigate('Settings')}
                 >
-                    <View style={[
-                        styles.gearIcon,
-                        currentScreen === 'Settings' && { borderColor: Colors.primary }
-                    ]} />
+                    <Icon
+                        name="settings-outline"
+                        size={26}
+                        color={currentScreen === 'Settings' ? Colors.primary : Colors.text}
+                    />
                 </TouchableOpacity>
             </View>
         </View>
@@ -75,19 +78,5 @@ const styles = StyleSheet.create({
     },
     iconButton: {
         padding: 5,
-    },
-    shieldIcon: {
-        width: 24,
-        height: 24,
-        borderWidth: 2,
-        borderColor: Colors.text,
-        borderRadius: 6,
-    },
-    gearIcon: {
-        width: 24,
-        height: 24,
-        borderWidth: 2,
-        borderColor: Colors.text,
-        borderRadius: 12,
     },
 });

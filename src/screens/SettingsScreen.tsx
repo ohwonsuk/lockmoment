@@ -5,10 +5,12 @@ import { Colors } from '../theme/Colors';
 import { Header } from '../components/Header';
 import { useAppNavigation } from '../navigation/NavigationContext';
 
+import { Icon } from '../components/Icon';
+
 const MenuItem: React.FC<{ title: string; onPress: () => void }> = ({ title, onPress }) => (
     <TouchableOpacity style={styles.menuItem} onPress={onPress}>
         <Typography variant="body">{title}</Typography>
-        <Typography color={Colors.textSecondary}>&gt;</Typography>
+        <Icon name="chevron-forward" size={20} color={Colors.textSecondary} />
     </TouchableOpacity>
 );
 

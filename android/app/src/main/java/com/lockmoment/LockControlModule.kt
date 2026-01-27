@@ -87,6 +87,31 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
     }
 
     @ReactMethod
+    fun getInstalledApps(promise: Promise) {
+        try {
+            val pm = reactApplicationContext.packageManager
+            val packages = pm.getInstalledPackages(0)
+            val appList = com.facebook.react.bridge.Arguments.createArray()
+            
+            for (packageInfo in packages) {
+                // Filter out system apps if necessary, but for now we list all for selection
+                // Often we might want only apps with a launcher intent
+                val intent = pm.getLaunchIntentForPackage(packageInfo.packageName)
+                if (intent != null) {
+                    val appMap = com.facebook.react.bridge.Arguments.createMap()
+                    val label = packageInfo.applicationInfo?.loadLabel(pm)?.toString() ?: "Unknown App"
+                    appMap.putString("label", label)
+                    appMap.putString("packageName", packageInfo.packageName)
+                    appList.pushMap(appMap)
+                }
+            }
+            promise.resolve(appList)
+        } catch (e: Exception) {
+            promise.reject("APP_LIST_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
     fun checkAuthorization(promise: Promise) {
         // Map accessibility permission to a status number similar to iOS
         // 2 = Authorized (matched in JS)

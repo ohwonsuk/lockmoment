@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Switch } from 'react-native';
 import { Typography } from './Typography';
 import { Colors } from '../theme/Colors';
+import { Icon } from './Icon';
 
 interface Schedule {
     id: string;
@@ -14,9 +15,10 @@ interface Schedule {
 interface Props {
     schedule: Schedule;
     onPress?: () => void;
+    onToggle?: (id: string) => void;
 }
 
-export const ScheduleItem: React.FC<Props> = ({ schedule, onPress }) => {
+export const ScheduleItem: React.FC<Props> = ({ schedule, onPress, onToggle }) => {
     return (
         <TouchableOpacity
             style={styles.container}
@@ -25,10 +27,16 @@ export const ScheduleItem: React.FC<Props> = ({ schedule, onPress }) => {
         >
             <View style={styles.header}>
                 <Typography variant="h2" bold>{schedule.name}</Typography>
-                <View style={[
-                    styles.statusDot,
-                    { backgroundColor: schedule.isActive ? Colors.statusGreen : Colors.statusInactive }
-                ]} />
+                <View style={styles.headerRight}>
+                    <Switch
+                        value={schedule.isActive}
+                        onValueChange={() => onToggle?.(schedule.id)}
+                        trackColor={{ false: Colors.statusInactive, true: Colors.primary }}
+                        thumbColor={Colors.text}
+                        style={styles.switch}
+                    />
+                    <Icon name="chevron-forward" size={18} color={Colors.textSecondary} />
+                </View>
             </View>
 
             <View style={styles.details}>
@@ -59,10 +67,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         marginBottom: 15,
     },
-    statusDot: {
-        width: 10,
-        height: 10,
-        borderRadius: 5,
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    switch: {
+        transform: [{ scaleX: 0.9 }, { scaleY: 0.9 }],
     },
     details: {
         flexDirection: 'row',

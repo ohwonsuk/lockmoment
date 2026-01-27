@@ -11,6 +11,7 @@ export interface LockControlInterface {
     stopLock(): Promise<boolean>;
     isLocked(): Promise<boolean>;
     getRemainingTime(): Promise<number>;
+    getInstalledApps(): Promise<{ label: string, packageName: string }[]>;
     presentFamilyActivityPicker(): Promise<boolean>;
 }
 
@@ -22,6 +23,7 @@ const defaultLockControl: LockControlInterface = {
     stopLock: async () => false,
     isLocked: async () => false,
     getRemainingTime: async () => 0,
+    getInstalledApps: async () => [],
     presentFamilyActivityPicker: async () => false,
 };
 
