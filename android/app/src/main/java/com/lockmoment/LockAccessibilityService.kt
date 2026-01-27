@@ -15,20 +15,25 @@ class LockAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+        // Listen for window state changes, generic focus changes, or content changes
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED || 
+            event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            
             val packageName = event.packageName?.toString() ?: return
-            Log.d("LockAccessibility", "App Opened: $packageName")
+            
+            // Avoid logic loops if it's our own lock screen
+            if (packageName == "com.lockmoment") return
 
             if (LockManager.isLocked) {
                 if (!LockManager.isPackageAllowed(packageName)) {
-                    Log.d("LockAccessibility", "Unallowed app detected. Blocking: $packageName")
+                    Log.d("LockAccessibility", "Blocking: $packageName (LockType: ${LockManager.lockType})")
                     
                     val intent = Intent(this, LockScreenActivity::class.java)
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_NO_ANIMATION)
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 
+                                  Intent.FLAG_ACTIVITY_SINGLE_TOP or 
+                                  Intent.FLAG_ACTIVITY_CLEAR_TOP)
                     startActivity(intent)
-                    
-                    // Optionally, perform global action back (less aggressive) or home
-                    // performGlobalAction(GLOBAL_ACTION_HOME) 
                 }
             }
         }

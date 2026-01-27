@@ -10,7 +10,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Focus Mode Active"
+        android:text="집중 모드 동작 중"
         android:textColor="#FFFFFF"
         android:textSize="32sp"
         android:textStyle="bold" />
@@ -30,7 +30,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:gravity="center"
-        android:text="This app is currently restricted."
+        android:text="현재 이 앱의 사용이 제한되었습니다."
         android:textColor="#CCCCCC"
         android:textSize="16sp" />
 

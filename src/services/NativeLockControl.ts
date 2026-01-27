@@ -7,9 +7,10 @@ export interface LockControlInterface {
     checkAccessibilityPermission(): Promise<boolean>;
     requestAuthorization(): Promise<boolean>;
     checkAuthorization(): Promise<number>;
-    startLock(durationMs: number): Promise<boolean>;
+    startLock(durationMs: number, type: string): Promise<boolean>;
     stopLock(): Promise<boolean>;
     isLocked(): Promise<boolean>;
+    getRemainingTime(): Promise<number>;
     presentFamilyActivityPicker(): Promise<boolean>;
 }
 
@@ -20,6 +21,7 @@ const defaultLockControl: LockControlInterface = {
     startLock: async () => false,
     stopLock: async () => false,
     isLocked: async () => false,
+    getRemainingTime: async () => 0,
     presentFamilyActivityPicker: async () => false,
 };
 
