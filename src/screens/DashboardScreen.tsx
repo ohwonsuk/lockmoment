@@ -21,7 +21,16 @@ export const DashboardScreen: React.FC = () => {
     useEffect(() => {
         checkStatus();
         loadSchedules();
+        restoreLock();
     }, []);
+
+    const restoreLock = async () => {
+        try {
+            await NativeLockControl.restoreLockState();
+        } catch (error) {
+            console.error('Failed to restore lock state:', error);
+        }
+    };
 
     const loadSchedules = async () => {
         const storedSchedules = await StorageService.getSchedules();
@@ -61,6 +70,29 @@ export const DashboardScreen: React.FC = () => {
     };
 
     const handleToggleSchedule = async (id: string) => {
+        const schedule = schedules.find(s => s.id === id);
+        if (schedule && schedule.isActive) {
+            // If turning off, cancel the alarm
+            try {
+                await NativeLockControl.cancelAlarm(id);
+            } catch (error) {
+                console.error('Failed to cancel alarm:', error);
+            }
+        } else if (schedule && !schedule.isActive) {
+            // If turning on, reschedule the alarm
+            try {
+                await NativeLockControl.scheduleAlarm(
+                    id,
+                    schedule.startTime,
+                    schedule.endTime,
+                    schedule.days,
+                    'app'
+                );
+            } catch (error) {
+                console.error('Failed to schedule alarm:', error);
+            }
+        }
+
         await StorageService.toggleScheduleActivity(id);
         loadSchedules();
     };
@@ -83,7 +115,10 @@ export const DashboardScreen: React.FC = () => {
 
                 <View style={styles.sectionHeader}>
                     <Typography variant="h2" bold>예약 잠금</Typography>
-                    <TouchableOpacity style={styles.addButton} onPress={() => navigate('AddSchedule')}>
+                    <TouchableOpacity style={styles.addButton} onPress={() => {
+                        (globalThis as any).editingScheduleId = null;
+                        navigate('AddSchedule');
+                    }}>
                         <View style={styles.addButtonContent}>
                             <Icon name="add" size={16} color={Colors.primary} />
                             <Typography color={Colors.primary} bold style={styles.addButtonText}>예약 추가</Typography>
@@ -106,7 +141,10 @@ export const DashboardScreen: React.FC = () => {
                                 days: item.days,
                                 isActive: item.isActive
                             }}
-                            onPress={() => navigate('AddSchedule')}
+                            onPress={() => {
+                                (globalThis as any).editingScheduleId = item.id;
+                                navigate('AddSchedule');
+                            }}
                             onToggle={handleToggleSchedule}
                         />
                     ))

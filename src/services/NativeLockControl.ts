@@ -13,6 +13,9 @@ export interface LockControlInterface {
     getRemainingTime(): Promise<number>;
     getInstalledApps(): Promise<{ label: string, packageName: string }[]>;
     presentFamilyActivityPicker(): Promise<boolean>;
+    scheduleAlarm(scheduleId: string, startTime: string, endTime: string, days: string[], lockType: string): Promise<boolean>;
+    cancelAlarm(scheduleId: string): Promise<boolean>;
+    restoreLockState(): Promise<boolean>;
 }
 
 const defaultLockControl: LockControlInterface = {
@@ -25,6 +28,9 @@ const defaultLockControl: LockControlInterface = {
     getRemainingTime: async () => 0,
     getInstalledApps: async () => [],
     presentFamilyActivityPicker: async () => false,
+    scheduleAlarm: async () => false,
+    cancelAlarm: async () => false,
+    restoreLockState: async () => false,
 };
 
 export const NativeLockControl: LockControlInterface = LockControl || defaultLockControl;

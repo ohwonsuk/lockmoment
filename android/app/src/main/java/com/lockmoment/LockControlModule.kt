@@ -42,7 +42,7 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
     @ReactMethod
     fun startLock(durationMs: Double, type: String, promise: Promise) {
         try {
-            LockManager.startLock(durationMs.toLong(), type)
+            LockManager.getInstance(reactApplicationContext).startLock(durationMs.toLong(), type)
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("LOCK_ERROR", e.message)
@@ -52,7 +52,7 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
     @ReactMethod
     fun stopLock(promise: Promise) {
         try {
-            LockManager.stopLock()
+            LockManager.getInstance(reactApplicationContext).stopLock()
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("UNLOCK_ERROR", e.message)
@@ -61,16 +61,17 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
 
     @ReactMethod
     fun isLocked(promise: Promise) {
-        promise.resolve(LockManager.isLocked)
+        promise.resolve(LockManager.getInstance(reactApplicationContext).isLocked)
     }
 
     @ReactMethod
     fun getRemainingTime(promise: Promise) {
-        if (!LockManager.isLocked) {
+        val lockManager = LockManager.getInstance(reactApplicationContext)
+        if (!lockManager.isLocked) {
             promise.resolve(0)
             return
         }
-        val remaining = LockManager.endTime - System.currentTimeMillis()
+        val remaining = lockManager.endTime - System.currentTimeMillis()
         promise.resolve(Math.max(0, remaining).toDouble())
     }
 
@@ -136,5 +137,54 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
         }
         
         promise.resolve(if (isEnabled) 2 else 0)
+    }
+    
+    @ReactMethod
+    fun scheduleAlarm(
+        scheduleId: String,
+        startTime: String,
+        endTime: String,
+        days: com.facebook.react.bridge.ReadableArray,
+        lockType: String,
+        promise: Promise
+    ) {
+        try {
+            val daysList = mutableListOf<String>()
+            for (i in 0 until days.size()) {
+                days.getString(i)?.let { daysList.add(it) }
+            }
+            
+            ScheduleAlarmManager.scheduleAlarm(
+                reactApplicationContext,
+                scheduleId,
+                startTime,
+                endTime,
+                daysList,
+                lockType
+            )
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("SCHEDULE_ERROR", e.message)
+        }
+    }
+    
+    @ReactMethod
+    fun cancelAlarm(scheduleId: String, promise: Promise) {
+        try {
+            ScheduleAlarmManager.cancelAlarm(reactApplicationContext, scheduleId)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("CANCEL_ERROR", e.message)
+        }
+    }
+    
+    @ReactMethod
+    fun restoreLockState(promise: Promise) {
+        try {
+            LockManager.getInstance(reactApplicationContext).restoreLockState()
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("RESTORE_ERROR", e.message)
+        }
     }
 }

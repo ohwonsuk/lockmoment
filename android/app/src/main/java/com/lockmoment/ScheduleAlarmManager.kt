@@ -1,0 +1,213 @@
+package com.lockmoment
+
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.util.Log
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.*
+
+object ScheduleAlarmManager {
+    private const val PREFS_NAME = "schedule_alarms"
+    private const val KEY_SCHEDULES = "schedules"
+    
+    fun scheduleAlarm(
+        context: Context,
+        scheduleId: String,
+        startTime: String, // HH:mm format
+        endTime: String,   // HH:mm format
+        days: List<String>,
+        lockType: String
+    ) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        
+        // Calculate duration in milliseconds
+        val duration = calculateDuration(startTime, endTime)
+        
+        // Schedule for each day
+        days.forEach { day ->
+            val triggerTime = getNextTriggerTime(startTime, day)
+            
+            val intent = Intent(context, ScheduleAlarmReceiver::class.java).apply {
+                putExtra("scheduleId", scheduleId)
+                putExtra("lockType", lockType)
+                putExtra("durationMs", duration)
+                putExtra("startTime", startTime)
+                putExtra("endTime", endTime)
+                putExtra("days", days.toTypedArray())
+            }
+            
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                "${scheduleId}_$day".hashCode(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            
+            // Use exact alarm for precise timing
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerTime,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.setExact(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerTime,
+                    pendingIntent
+                )
+            }
+            
+            Log.d("ScheduleAlarmManager", "Scheduled alarm for $scheduleId on $day at ${Date(triggerTime)}")
+        }
+        
+        // Save schedule info for rescheduling after reboot
+        saveScheduleInfo(context, scheduleId, startTime, endTime, days, lockType)
+    }
+    
+    fun cancelAlarm(context: Context, scheduleId: String) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        
+        // Load schedule info to get days
+        val scheduleInfo = loadScheduleInfo(context, scheduleId)
+        val days = scheduleInfo?.optJSONArray("days")?.let { jsonArray ->
+            List(jsonArray.length()) { jsonArray.getString(it) }
+        } ?: emptyList()
+        
+        days.forEach { day ->
+            val intent = Intent(context, ScheduleAlarmReceiver::class.java)
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                "${scheduleId}_$day".hashCode(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            alarmManager.cancel(pendingIntent)
+        }
+        
+        // Remove from saved schedules
+        removeScheduleInfo(context, scheduleId)
+        Log.d("ScheduleAlarmManager", "Cancelled alarm for $scheduleId")
+    }
+    
+    fun scheduleNextOccurrence(
+        context: Context,
+        scheduleId: String,
+        startTime: String,
+        endTime: String,
+        days: List<String>,
+        lockType: String
+    ) {
+        // Reschedule for next week
+        scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType)
+    }
+    
+    fun rescheduleAllAlarms(context: Context) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val schedulesJson = prefs.getString(KEY_SCHEDULES, "{}") ?: "{}"
+        val schedules = JSONObject(schedulesJson)
+        
+        schedules.keys().forEach { scheduleId ->
+            val schedule = schedules.getJSONObject(scheduleId)
+            val startTime = schedule.getString("startTime")
+            val endTime = schedule.getString("endTime")
+            val lockType = schedule.getString("lockType")
+            val daysArray = schedule.getJSONArray("days")
+            val days = List(daysArray.length()) { daysArray.getString(it) }
+            
+            scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType)
+        }
+    }
+    
+    private fun calculateDuration(startTime: String, endTime: String): Long {
+        val start = parseTime(startTime)
+        val end = parseTime(endTime)
+        
+        var duration = end - start
+        if (duration < 0) {
+            duration += 24 * 60 * 60 * 1000 // Add 24 hours if end is next day
+        }
+        
+        return duration
+    }
+    
+    private fun parseTime(time: String): Long {
+        val parts = time.split(":")
+        val hours = parts[0].toInt()
+        val minutes = parts[1].toInt()
+        return (hours * 60 + minutes) * 60 * 1000L
+    }
+    
+    private fun getNextTriggerTime(time: String, day: String): Long {
+        val calendar = Calendar.getInstance()
+        val parts = time.split(":")
+        val hours = parts[0].toInt()
+        val minutes = parts[1].toInt()
+        
+        // Map Korean day names to Calendar constants
+        val dayOfWeek = when (day) {
+            "월" -> Calendar.MONDAY
+            "화" -> Calendar.TUESDAY
+            "수" -> Calendar.WEDNESDAY
+            "목" -> Calendar.THURSDAY
+            "금" -> Calendar.FRIDAY
+            "토" -> Calendar.SATURDAY
+            "일" -> Calendar.SUNDAY
+            else -> Calendar.MONDAY
+        }
+        
+        calendar.set(Calendar.HOUR_OF_DAY, hours)
+        calendar.set(Calendar.MINUTE, minutes)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+        
+        // Find next occurrence of this day
+        while (calendar.get(Calendar.DAY_OF_WEEK) != dayOfWeek || calendar.timeInMillis <= System.currentTimeMillis()) {
+            calendar.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        
+        return calendar.timeInMillis
+    }
+    
+    private fun saveScheduleInfo(
+        context: Context,
+        scheduleId: String,
+        startTime: String,
+        endTime: String,
+        days: List<String>,
+        lockType: String
+    ) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val schedulesJson = prefs.getString(KEY_SCHEDULES, "{}") ?: "{}"
+        val schedules = JSONObject(schedulesJson)
+        
+        val scheduleInfo = JSONObject().apply {
+            put("startTime", startTime)
+            put("endTime", endTime)
+            put("lockType", lockType)
+            put("days", JSONArray(days))
+        }
+        
+        schedules.put(scheduleId, scheduleInfo)
+        prefs.edit().putString(KEY_SCHEDULES, schedules.toString()).apply()
+    }
+    
+    private fun loadScheduleInfo(context: Context, scheduleId: String): JSONObject? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val schedulesJson = prefs.getString(KEY_SCHEDULES, "{}") ?: "{}"
+        val schedules = JSONObject(schedulesJson)
+        return schedules.optJSONObject(scheduleId)
+    }
+    
+    private fun removeScheduleInfo(context: Context, scheduleId: String) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val schedulesJson = prefs.getString(KEY_SCHEDULES, "{}") ?: "{}"
+        val schedules = JSONObject(schedulesJson)
+        schedules.remove(scheduleId)
+        prefs.edit().putString(KEY_SCHEDULES, schedules.toString()).apply()
+    }
+}

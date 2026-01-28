@@ -25,9 +25,10 @@ class LockAccessibilityService : AccessibilityService() {
             // Avoid logic loops if it's our own lock screen
             if (packageName == "com.lockmoment") return
 
-            if (LockManager.isLocked) {
-                if (!LockManager.isPackageAllowed(packageName)) {
-                    Log.d("LockAccessibility", "Blocking: $packageName (LockType: ${LockManager.lockType})")
+            val lockManager = LockManager.getInstance(this)
+            if (lockManager.isLocked) {
+                if (!lockManager.isPackageAllowed(packageName)) {
+                    Log.d("LockAccessibility", "Blocking: $packageName (LockType: ${lockManager.lockType})")
                     
                     val intent = Intent(this, LockScreenActivity::class.java)
                     intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or 

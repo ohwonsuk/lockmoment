@@ -14,7 +14,7 @@ class LockScreenActivity : Activity() {
     private val updateRunnable = object : Runnable {
         override fun run() {
             updateTimer()
-            if (LockManager.isLocked) {
+            if (LockManager.getInstance(this@LockScreenActivity).isLocked) {
                 handler.postDelayed(this, 1000)
             } else {
                 finish()
@@ -48,14 +48,15 @@ class LockScreenActivity : Activity() {
     }
 
     private fun updateTimer() {
-        if (!LockManager.isLocked) {
+        val lockManager = LockManager.getInstance(this)
+        if (!lockManager.isLocked) {
             finish()
             return
         }
 
-        val remaining = LockManager.endTime - System.currentTimeMillis()
+        val remaining = lockManager.endTime - System.currentTimeMillis()
         if (remaining <= 0) {
-            LockManager.stopLock()
+            lockManager.stopLock()
             finish()
             return
         }

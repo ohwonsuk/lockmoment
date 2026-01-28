@@ -21,6 +21,43 @@ export const AddScheduleScreen: React.FC = () => {
     const [selectedDays, setSelectedDays] = useState<string[]>(['월', '화', '수', '목', '금']);
     const [allowedApp, setAllowedApp] = useState<{ label: string, packageName: string } | null>(null);
 
+    const [editingId, setEditingId] = useState<string | null>(null);
+
+    useEffect(() => {
+        const loadEditingSchedule = async () => {
+            const id = (globalThis as any).editingScheduleId;
+            if (id) {
+                setEditingId(id);
+                try {
+                    const schedules = await StorageService.getSchedules();
+                    const schedule = schedules.find(s => s.id === id);
+                    if (schedule) {
+                        setName(schedule.name);
+
+                        const now = new Date();
+                        const [startH, startM] = schedule.startTime.split(':').map(Number);
+                        const [endH, endM] = schedule.endTime.split(':').map(Number);
+
+                        const newStartTime = new Date(now);
+                        newStartTime.setHours(startH, startM, 0, 0);
+                        setStartTime(newStartTime);
+
+                        const newEndTime = new Date(now);
+                        newEndTime.setHours(endH, endM, 0, 0);
+                        setEndTime(newEndTime);
+
+                        setStrictMode(schedule.strictMode);
+                        setSelectedDays(schedule.days);
+                        setAllowedApp(schedule.allowedApp || null);
+                    }
+                } catch (e) {
+                    console.error('Failed to load schedule for editing', e);
+                }
+            }
+        };
+        loadEditingSchedule();
+    }, []);
+
     useEffect(() => {
         // Check for selected app from AppSelectScreen (Android)
         const checkSelectedApp = setInterval(() => {
@@ -59,7 +96,7 @@ export const AddScheduleScreen: React.FC = () => {
 
     const handleSave = async () => {
         const newSchedule: Schedule = {
-            id: Date.now().toString(),
+            id: editingId || Date.now().toString(),
             name,
             startTime: `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`,
             endTime: `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`,
@@ -70,7 +107,21 @@ export const AddScheduleScreen: React.FC = () => {
         };
 
         await StorageService.saveSchedule(newSchedule);
-        Alert.alert("저장 완료", "예약 잠금이 저장되었습니다.");
+
+        // Schedule native alarms for this schedule
+        try {
+            await NativeLockControl.scheduleAlarm(
+                newSchedule.id,
+                newSchedule.startTime,
+                newSchedule.endTime,
+                newSchedule.days,
+                'app' // Default to app lock for now
+            );
+        } catch (error) {
+            console.error('Failed to schedule alarm:', error);
+        }
+
+        Alert.alert("저장 완료", editingId ? "예약이 수정되었습니다." : "예약 잠금이 저장되었습니다.");
         navigate('Dashboard');
     };
 
