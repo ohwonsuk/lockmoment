@@ -16,6 +16,8 @@ export interface LockControlInterface {
     scheduleAlarm(scheduleId: string, startTime: string, endTime: string, days: string[], lockType: string): Promise<boolean>;
     cancelAlarm(scheduleId: string): Promise<boolean>;
     restoreLockState(): Promise<boolean>;
+    openDefaultDialer(): Promise<boolean>;
+    openDefaultMessages(): Promise<boolean>;
 }
 
 const defaultLockControl: LockControlInterface = {
@@ -31,6 +33,8 @@ const defaultLockControl: LockControlInterface = {
     scheduleAlarm: async () => false,
     cancelAlarm: async () => false,
     restoreLockState: async () => false,
+    openDefaultDialer: async () => false,
+    openDefaultMessages: async () => false,
 };
 
 export const NativeLockControl: LockControlInterface = LockControl || defaultLockControl;

@@ -1,7 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const SCHEDULES_KEY = '@lockmoment_schedules';
-
 export interface Schedule {
     id: string;
     name: string;
@@ -15,6 +13,17 @@ export interface Schedule {
     };
     isActive: boolean;
 }
+
+export interface HistoryItem {
+    id: string;
+    date: string;
+    name: string;
+    duration: string;
+    status: '완료' | '중단';
+}
+
+const SCHEDULES_KEY = '@lockmoment_schedules';
+const HISTORY_KEY = '@lockmoment_history';
 
 export const StorageService = {
     async getSchedules(): Promise<Schedule[]> {
@@ -64,6 +73,26 @@ export const StorageService = {
             }
         } catch (e) {
             console.error('Failed to toggle schedule', e);
+        }
+    },
+
+    async getHistory(): Promise<HistoryItem[]> {
+        try {
+            const jsonValue = await AsyncStorage.getItem(HISTORY_KEY);
+            return jsonValue != null ? JSON.parse(jsonValue) : [];
+        } catch (e) {
+            console.error('Failed to fetch history', e);
+            return [];
+        }
+    },
+
+    async addHistory(item: HistoryItem): Promise<void> {
+        try {
+            const history = await this.getHistory();
+            history.unshift(item); // Add to beginning
+            await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(0, 50))); // Keep last 50
+        } catch (e) {
+            console.error('Failed to save history', e);
         }
     }
 };

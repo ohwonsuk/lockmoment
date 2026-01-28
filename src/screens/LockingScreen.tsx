@@ -56,13 +56,21 @@ export const LockingScreen: React.FC = () => {
         );
     };
 
-    const handleOpenDialer = () => {
-        const url = Platform.OS === 'ios' ? 'telprompt:' : 'tel:';
-        Linking.openURL(url).catch(() => Alert.alert("오류", "전화 앱을 열 수 없습니다."));
+    const handleOpenDialer = async () => {
+        if (Platform.OS === 'android') {
+            await NativeLockControl.openDefaultDialer();
+        } else {
+            const url = 'telprompt:';
+            Linking.openURL(url).catch(() => Alert.alert("오류", "전화 앱을 열 수 없습니다."));
+        }
     };
 
-    const handleOpenMessages = () => {
-        Linking.openURL('sms:').catch(() => Alert.alert("오류", "메시지 앱을 열 수 없습니다."));
+    const handleOpenMessages = async () => {
+        if (Platform.OS === 'android') {
+            await NativeLockControl.openDefaultMessages();
+        } else {
+            Linking.openURL('sms:').catch(() => Alert.alert("오류", "메시지 앱을 열 수 없습니다."));
+        }
     };
 
     return (

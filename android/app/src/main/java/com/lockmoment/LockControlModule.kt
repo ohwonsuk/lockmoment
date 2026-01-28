@@ -187,4 +187,29 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
             promise.reject("RESTORE_ERROR", e.message)
         }
     }
+
+    @ReactMethod
+    fun openDefaultDialer(promise: Promise) {
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_DIAL)
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            reactApplicationContext.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("DIALER_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun openDefaultMessages(promise: Promise) {
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO)
+            intent.data = android.net.Uri.parse("smsto:")
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            reactApplicationContext.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("MESSAGES_ERROR", e.message)
+        }
+    }
 }

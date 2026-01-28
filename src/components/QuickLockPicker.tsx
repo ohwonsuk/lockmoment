@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Modal, TextInput, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Modal } from 'react-native';
+import { Picker } from 'react-native-wheel-pick';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 
@@ -46,30 +47,28 @@ export const QuickLockPicker: React.FC<Props> = ({ isVisible, onClose, onConfirm
                     <Typography variant="h2" bold style={styles.title}>잠금 시간 설정</Typography>
 
                     <View style={styles.pickerRow}>
-                        <View style={styles.inputGroup}>
-                            <TextInput
-                                style={styles.input}
-                                value={hours}
-                                onChangeText={setHours}
-                                keyboardType="number-pad"
-                                maxLength={2}
-                                placeholder="00"
-                                placeholderTextColor={Colors.textSecondary}
+                        <View style={styles.pickerGroup}>
+                            <Picker
+                                style={styles.picker}
+                                textColor={Colors.text}
+                                textSize={24}
+                                selectedValue={hours}
+                                pickerData={Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))}
+                                onValueChange={(val: any) => setHours(val)}
                             />
                             <Typography variant="caption" color={Colors.textSecondary}>시간</Typography>
                         </View>
 
-                        <Typography variant="h2">:</Typography>
+                        <Typography variant="h2" bold style={styles.colon}>:</Typography>
 
-                        <View style={styles.inputGroup}>
-                            <TextInput
-                                style={styles.input}
-                                value={minutes}
-                                onChangeText={setMinutes}
-                                keyboardType="number-pad"
-                                maxLength={2}
-                                placeholder="00"
-                                placeholderTextColor={Colors.textSecondary}
+                        <View style={styles.pickerGroup}>
+                            <Picker
+                                style={styles.picker}
+                                textColor={Colors.text}
+                                textSize={24}
+                                selectedValue={minutes}
+                                pickerData={Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'))}
+                                onValueChange={(val: any) => setMinutes(val)}
                             />
                             <Typography variant="caption" color={Colors.textSecondary}>분</Typography>
                         </View>
@@ -97,7 +96,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     container: {
-        width: '85%',
+        width: '90%',
         backgroundColor: Colors.card,
         borderRadius: 24,
         padding: 24,
@@ -106,7 +105,7 @@ const styles = StyleSheet.create({
     },
     title: {
         textAlign: 'center',
-        marginBottom: 30,
+        marginBottom: 20,
         marginTop: 10,
     },
     typeSelector: {
@@ -131,24 +130,24 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 15,
-        marginBottom: 40,
-    },
-    inputGroup: {
-        alignItems: 'center',
-        gap: 8,
-    },
-    input: {
+        marginBottom: 30,
         backgroundColor: Colors.background,
-        color: Colors.text,
-        fontSize: 40,
-        fontWeight: 'bold',
+        borderRadius: 16,
+        padding: 10,
+    },
+    pickerGroup: {
+        alignItems: 'center',
+        width: 100,
+    },
+    picker: {
         width: 80,
-        height: 80,
-        textAlign: 'center',
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: Colors.border,
+        height: 150,
+        backgroundColor: 'transparent',
+    },
+    colon: {
+        fontSize: 24,
+        marginHorizontal: 10,
+        marginTop: -20,
     },
     footer: {
         flexDirection: 'row',

@@ -17,22 +17,51 @@ class LockManager private constructor(private val context: Context) {
         "com.google.android.inputmethod.latin", 
         "com.samsung.android.honeyboard",
         "com.android.phone",
-        "com.android.server.telecom",
-        "com.google.android.dialer",
-        "com.samsung.android.dialer",
-        "com.google.android.apps.messaging",
-        "com.samsung.android.messaging",
-        "com.android.mms"
+        "com.android.server.telecom"
     )
+
+    private fun updateDefaultApps() {
+        try {
+            val pm = context.packageManager
+            
+            // Default Dialer
+            val dialIntent = android.content.Intent(android.content.Intent.ACTION_DIAL)
+            val dialerInfo = pm.resolveActivity(dialIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            dialerInfo?.activityInfo?.packageName?.let { 
+                allowedPackages.add(it)
+                Log.d("LockManager", "Allowed default dialer: $it")
+            }
+
+            // Default SMS
+            val smsIntent = android.content.Intent(android.content.Intent.ACTION_SENDTO)
+            smsIntent.data = android.net.Uri.parse("smsto:")
+            val smsInfo = pm.resolveActivity(smsIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            smsInfo?.activityInfo?.packageName?.let { 
+                allowedPackages.add(it)
+                Log.d("LockManager", "Allowed default SMS: $it")
+            }
+            
+            // Current Launcher (to be blocked in phone mode, but we need to know what it is)
+            val homeIntent = android.content.Intent(android.content.Intent.ACTION_MAIN)
+            homeIntent.addCategory(android.content.Intent.CATEGORY_HOME)
+            val homeInfo = pm.resolveActivity(homeIntent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            homeInfo?.activityInfo?.packageName?.let {
+                // We'll handle this in isPackageAllowed
+            }
+        } catch (e: Exception) {
+            Log.e("LockManager", "Failed to update default apps", e)
+        }
+    }
 
     fun startLock(durationMs: Long, type: String = "app") {
         endTime = System.currentTimeMillis() + durationMs
         lockType = type
         isLocked = true
         
+        updateDefaultApps()
         // Save lock state
         saveLockState()
-        Log.d("LockManager", "Lock started until ${java.util.Date(endTime)}")
+        Log.d("LockManager", "Lock started until ${java.util.Date(endTime)} (Type: $type)")
     }
 
     fun stopLock() {
@@ -45,15 +74,44 @@ class LockManager private constructor(private val context: Context) {
     }
 
     fun isPackageAllowed(packageName: String): Boolean {
-        if (allowedPackages.contains(packageName) || 
-            packageName.contains("keyboard") || 
-            packageName.contains("telephony") ||
-            packageName.contains("contact")) {
+        // Essential system components
+        if (packageName == "com.android.systemui" || 
+            packageName == "com.android.settings" ||
+            packageName == "com.android.phone" ||
+            packageName == "com.android.server.telecom") {
             return true
         }
 
-        if (packageName.contains("launcher")) {
-            return lockType != "phone"
+        if (packageName == "com.lockmoment") return true
+
+        // Keyboard and telephony always allowed
+        if (packageName.contains("keyboard") || 
+            packageName.contains("telephony") ||
+            packageName.contains("inputmethod")) {
+            return true
+        }
+
+        // Phone lock is extremely restrictive
+        if (lockType == "phone") {
+            // Check if it's the default dialer or SMS (already in allowedPackages if updateDefaultApps worked)
+            if (allowedPackages.contains(packageName)) return true
+            
+            // Block everything else including launchers
+            return false
+        }
+
+        // App lock mode
+        if (allowedPackages.contains(packageName)) {
+            return true
+        }
+
+        if (packageName.contains("launcher") || packageName.contains("home")) {
+            return true
+        }
+
+        // Contact provider etc.
+        if (packageName.contains("contact")) {
+            return true
         }
 
         return false
