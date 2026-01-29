@@ -20,7 +20,9 @@ object ScheduleAlarmManager {
         startTime: String, // HH:mm format
         endTime: String,   // HH:mm format
         days: List<String>,
-        lockType: String
+        lockType: String,
+        name: String = "예약 잠금",
+        allowedPackage: String? = null
     ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
@@ -34,10 +36,12 @@ object ScheduleAlarmManager {
             val intent = Intent(context, ScheduleAlarmReceiver::class.java).apply {
                 putExtra("scheduleId", scheduleId)
                 putExtra("lockType", lockType)
+                putExtra("lockName", name)
                 putExtra("durationMs", duration)
                 putExtra("startTime", startTime)
                 putExtra("endTime", endTime)
                 putExtra("days", days.toTypedArray())
+                putExtra("allowedPackage", allowedPackage)
             }
             
             val pendingIntent = PendingIntent.getBroadcast(
@@ -62,11 +66,11 @@ object ScheduleAlarmManager {
                 )
             }
             
-            Log.d("ScheduleAlarmManager", "Scheduled alarm for $scheduleId on $day at ${Date(triggerTime)}")
+            Log.d("ScheduleAlarmManager", "Scheduled alarm for $name ($scheduleId) on $day at ${Date(triggerTime)}")
         }
         
         // Save schedule info for rescheduling after reboot
-        saveScheduleInfo(context, scheduleId, startTime, endTime, days, lockType)
+        saveScheduleInfo(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage)
     }
     
     fun cancelAlarm(context: Context, scheduleId: String) {
@@ -100,10 +104,12 @@ object ScheduleAlarmManager {
         startTime: String,
         endTime: String,
         days: List<String>,
-        lockType: String
+        lockType: String,
+        name: String,
+        allowedPackage: String?
     ) {
         // Reschedule for next week
-        scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType)
+        scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage)
     }
     
     fun rescheduleAllAlarms(context: Context) {
@@ -116,10 +122,12 @@ object ScheduleAlarmManager {
             val startTime = schedule.getString("startTime")
             val endTime = schedule.getString("endTime")
             val lockType = schedule.getString("lockType")
+            val name = schedule.optString("name", "예약 잠금")
+            val allowedPackage = schedule.optString("allowedPackage", null)
             val daysArray = schedule.getJSONArray("days")
             val days = List(daysArray.length()) { daysArray.getString(it) }
             
-            scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType)
+            scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage)
         }
     }
     
@@ -179,7 +187,9 @@ object ScheduleAlarmManager {
         startTime: String,
         endTime: String,
         days: List<String>,
-        lockType: String
+        lockType: String,
+        name: String,
+        allowedPackage: String?
     ) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val schedulesJson = prefs.getString(KEY_SCHEDULES, "{}") ?: "{}"
@@ -189,7 +199,9 @@ object ScheduleAlarmManager {
             put("startTime", startTime)
             put("endTime", endTime)
             put("lockType", lockType)
+            put("name", name)
             put("days", JSONArray(days))
+            put("allowedPackage", allowedPackage)
         }
         
         schedules.put(scheduleId, scheduleInfo)

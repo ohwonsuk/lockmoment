@@ -6,7 +6,7 @@ export interface Schedule {
     startTime: string; // HH:mm
     endTime: string;   // HH:mm
     days: string[];
-    strictMode: boolean;
+    lockType: string;
     allowedApp?: {
         label: string;
         packageName: string;

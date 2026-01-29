@@ -9,65 +9,53 @@ import { DatePicker, Picker } from 'react-native-wheel-pick';
 import { StorageService, Schedule } from '../services/StorageService';
 import { NativeLockControl } from '../services/NativeLockControl';
 
-
 export const AddScheduleScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
     const insets = useSafeAreaInsets();
-
-    const [name, setName] = useState('공부 집중 시간');
-    const [startTime, setStartTime] = useState(new Date(new Date().setHours(9, 0, 0, 0)));
-    const [endTime, setEndTime] = useState(new Date(new Date().setHours(12, 0, 0, 0)));
-    const [strictMode, setStrictMode] = useState(true);
+    const [name, setName] = useState('예약 잠금');
+    const [startTime, setStartTime] = useState(new Date());
+    const [endTime, setEndTime] = useState(new Date(Date.now() + 3600000));
     const [selectedDays, setSelectedDays] = useState<string[]>(['월', '화', '수', '목', '금']);
+    const [strictMode, setStrictMode] = useState(true);
+    const [lockType, setLockType] = useState('app');
     const [allowedApp, setAllowedApp] = useState<{ label: string, packageName: string } | null>(null);
-
     const [editingId, setEditingId] = useState<string | null>(null);
 
     useEffect(() => {
-        const loadEditingSchedule = async () => {
-            const id = (globalThis as any).editingScheduleId;
-            if (id) {
-                setEditingId(id);
-                try {
-                    const schedules = await StorageService.getSchedules();
-                    const schedule = schedules.find(s => s.id === id);
-                    if (schedule) {
-                        setName(schedule.name);
+        const id = (globalThis as any).editingScheduleId;
+        if (id) {
+            setEditingId(id);
+            loadSchedule(id);
+        }
 
-                        const now = new Date();
-                        const [startH, startM] = schedule.startTime.split(':').map(Number);
-                        const [endH, endM] = schedule.endTime.split(':').map(Number);
-
-                        const newStartTime = new Date(now);
-                        newStartTime.setHours(startH, startM, 0, 0);
-                        setStartTime(newStartTime);
-
-                        const newEndTime = new Date(now);
-                        newEndTime.setHours(endH, endM, 0, 0);
-                        setEndTime(newEndTime);
-
-                        setStrictMode(schedule.strictMode);
-                        setSelectedDays(schedule.days);
-                        setAllowedApp(schedule.allowedApp || null);
-                    }
-                } catch (e) {
-                    console.error('Failed to load schedule for editing', e);
-                }
-            }
-        };
-        loadEditingSchedule();
+        const selected = (globalThis as any).selectedApp;
+        if (selected) {
+            setAllowedApp(selected);
+            (globalThis as any).selectedApp = null;
+        }
     }, []);
 
-    useEffect(() => {
-        // Check for selected app from AppSelectScreen (Android)
-        const checkSelectedApp = setInterval(() => {
-            if ((globalThis as any).selectedApp) {
-                setAllowedApp((globalThis as any).selectedApp);
-                (globalThis as any).selectedApp = undefined;
-            }
-        }, 500);
-        return () => clearInterval(checkSelectedApp);
-    }, []);
+    const loadSchedule = async (id: string) => {
+        const schedules = await StorageService.getSchedules();
+        const schedule = schedules.find(s => s.id === id);
+        if (schedule) {
+            setName(schedule.name);
+            setSelectedDays(schedule.days);
+            setLockType(schedule.lockType || 'app');
+            setAllowedApp(schedule.allowedApp || null);
+
+            const [sH, sM] = schedule.startTime.split(':');
+            const [eH, eM] = schedule.endTime.split(':');
+
+            const sDate = new Date();
+            sDate.setHours(parseInt(sH), parseInt(sM));
+            setStartTime(sDate);
+
+            const eDate = new Date();
+            eDate.setHours(parseInt(eH), parseInt(eM));
+            setEndTime(eDate);
+        }
+    };
 
     const days = ['월', '화', '수', '목', '금', '토', '일'];
 
@@ -76,6 +64,55 @@ export const AddScheduleScreen: React.FC = () => {
             setSelectedDays(selectedDays.filter(d => d !== day));
         } else {
             setSelectedDays([...selectedDays, day]);
+        }
+    };
+
+    const handleMinuteChange = (val: string, isStart: boolean) => {
+        const setTime = isStart ? setStartTime : setEndTime;
+        const currentTime = isStart ? startTime : endTime;
+        const newMinutes = parseInt(val);
+        const oldMinutes = currentTime.getMinutes();
+
+        const newDate = new Date(currentTime);
+
+        // Reverting to threshold-based rollover which was reportedly working better
+        if (oldMinutes > 45 && newMinutes < 15) {
+            newDate.setHours(newDate.getHours() + 1);
+        } else if (oldMinutes < 15 && newMinutes > 45) {
+            newDate.setHours(newDate.getHours() - 1);
+        }
+
+        newDate.setMinutes(newMinutes);
+        setTime(newDate);
+    };
+
+    const handleHourChange = (val: string, isStart: boolean) => {
+        const setTime = isStart ? setStartTime : setEndTime;
+        const currentTime = isStart ? startTime : endTime;
+        const isPM = currentTime.getHours() >= 12;
+        let h = parseInt(val);
+        if (h === 12) h = 0;
+
+        const newDate = new Date(currentTime);
+        newDate.setHours(isPM ? h + 12 : h);
+        setTime(newDate);
+    };
+
+    const handleAmPmChange = (val: string, isStart: boolean) => {
+        const setTime = isStart ? setStartTime : setEndTime;
+        const currentTime = isStart ? startTime : endTime;
+        const newIsPM = val === '오후';
+        const currentIsPM = currentTime.getHours() >= 12;
+
+        if (newIsPM !== currentIsPM) {
+            const newDate = new Date(currentTime);
+            const currentHour = newDate.getHours();
+            if (newIsPM) {
+                newDate.setHours(currentHour + 12);
+            } else {
+                newDate.setHours(currentHour - 12);
+            }
+            setTime(newDate);
         }
     };
 
@@ -101,21 +138,22 @@ export const AddScheduleScreen: React.FC = () => {
             startTime: `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`,
             endTime: `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`,
             days: selectedDays,
-            strictMode,
+            lockType,
             allowedApp: allowedApp || undefined,
             isActive: true,
         };
 
         await StorageService.saveSchedule(newSchedule);
 
-        // Schedule native alarms for this schedule
         try {
             await NativeLockControl.scheduleAlarm(
                 newSchedule.id,
                 newSchedule.startTime,
                 newSchedule.endTime,
                 newSchedule.days,
-                'app' // Default to app lock for now
+                newSchedule.lockType,
+                newSchedule.name,
+                newSchedule.allowedApp?.packageName
             );
         } catch (error) {
             console.error('Failed to schedule alarm:', error);
@@ -125,13 +163,34 @@ export const AddScheduleScreen: React.FC = () => {
         navigate('Dashboard');
     };
 
+    const handleDelete = async () => {
+        if (!editingId) return;
+
+        Alert.alert(
+            "삭제 확인",
+            "이 예약을 삭제하시겠습니까?",
+            [
+                { text: "취소", style: "cancel" },
+                {
+                    text: "삭제",
+                    style: "destructive",
+                    onPress: async () => {
+                        await NativeLockControl.cancelAlarm(editingId);
+                        await StorageService.deleteSchedule(editingId);
+                        navigate('Dashboard');
+                    }
+                }
+            ]
+        );
+    };
+
     return (
         <View style={[styles.container, { paddingTop: insets.top }]}>
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigate('Dashboard')} style={styles.headerButton}>
                     <Icon name="close" size={28} />
                 </TouchableOpacity>
-                <Typography variant="h2" bold>예약 추가</Typography>
+                <Typography variant="h2" bold>{editingId ? "예약 수정" : "예약 추가"}</Typography>
                 <TouchableOpacity onPress={handleSave} style={styles.headerButton}>
                     <Typography color={Colors.primary} bold>저장</Typography>
                 </TouchableOpacity>
@@ -151,67 +210,82 @@ export const AddScheduleScreen: React.FC = () => {
                 <View style={styles.section}>
                     <Typography variant="h2" bold style={styles.sectionTitle}>시간 설정</Typography>
                     <View style={styles.timeRow}>
+                        {/* Start Time */}
                         <View style={styles.timeCard}>
                             <Typography variant="caption" color={Colors.textSecondary} style={styles.timeLabel}>시작 시간</Typography>
-                            <View style={styles.pickerWrapper}>
+                            <View style={styles.pickerContainer}>
                                 <Picker
-                                    style={styles.individualPicker}
+                                    style={[styles.ampmPicker, { backgroundColor: '#0F172A' }]}
+                                    textColor={Colors.text}
+                                    textSize={15}
+                                    itemStyle={{ height: 40, backgroundColor: '#0F172A' }}
+                                    backgroundColor="#0F172A"
+                                    selectedValue={startTime.getHours() >= 12 ? '오후' : '오전'}
+                                    pickerData={['오전', '오후']}
+                                    onValueChange={(val: any) => handleAmPmChange(val, true)}
+                                />
+                                <Picker
+                                    style={[styles.hourPicker, { backgroundColor: '#0F172A' }]}
                                     textColor={Colors.text}
                                     textSize={18}
-                                    itemStyle={{ height: 40 }}
-                                    selectedValue={startTime.getHours().toString().padStart(2, '0')}
-                                    pickerData={Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))}
-                                    onValueChange={(val: any) => {
-                                        const newDate = new Date(startTime);
-                                        newDate.setHours(parseInt(val));
-                                        setStartTime(newDate);
-                                    }}
+                                    itemStyle={{ height: 40, backgroundColor: '#0F172A' }}
+                                    backgroundColor="#0F172A"
+                                    isCyclic={true}
+                                    selectedValue={((startTime.getHours() + 11) % 12 + 1).toString()}
+                                    pickerData={Array.from({ length: 12 }, (_, i) => (i + 1).toString())}
+                                    onValueChange={(val: any) => handleHourChange(val, true)}
                                 />
                                 <Typography variant="h2" bold style={styles.colonText}>:</Typography>
                                 <Picker
-                                    style={styles.individualPicker}
+                                    style={[styles.minutePicker, { backgroundColor: '#0F172A' }]}
                                     textColor={Colors.text}
                                     textSize={18}
-                                    itemStyle={{ height: 40 }}
+                                    itemStyle={{ height: 40, backgroundColor: '#0F172A' }}
+                                    backgroundColor="#0F172A"
+                                    isCyclic={true}
                                     selectedValue={startTime.getMinutes().toString().padStart(2, '0')}
                                     pickerData={Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'))}
-                                    onValueChange={(val: any) => {
-                                        const newDate = new Date(startTime);
-                                        newDate.setMinutes(parseInt(val));
-                                        setStartTime(newDate);
-                                    }}
+                                    onValueChange={(val: any) => handleMinuteChange(val, true)}
                                 />
                             </View>
                         </View>
+
+                        {/* End Time */}
                         <View style={styles.timeCard}>
                             <Typography variant="caption" color={Colors.textSecondary} style={styles.timeLabel}>종료 시간</Typography>
-                            <View style={styles.pickerWrapper}>
+                            <View style={styles.pickerContainer}>
                                 <Picker
-                                    style={styles.individualPicker}
+                                    style={[styles.ampmPicker, { backgroundColor: '#0F172A' }]}
+                                    textColor={Colors.text}
+                                    textSize={15}
+                                    itemStyle={{ height: 40, backgroundColor: '#0F172A' }}
+                                    backgroundColor="#0F172A"
+                                    selectedValue={endTime.getHours() >= 12 ? '오후' : '오전'}
+                                    pickerData={['오전', '오후']}
+                                    onValueChange={(val: any) => handleAmPmChange(val, false)}
+                                />
+                                <Picker
+                                    style={[styles.hourPicker, { backgroundColor: '#0F172A' }]}
                                     textColor={Colors.text}
                                     textSize={18}
-                                    itemStyle={{ height: 40 }}
-                                    selectedValue={endTime.getHours().toString().padStart(2, '0')}
-                                    pickerData={Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'))}
-                                    onValueChange={(val: any) => {
-                                        const newDate = new Date(endTime);
-                                        newDate.setHours(parseInt(val));
-                                        setEndTime(newDate);
-                                    }}
+                                    itemStyle={{ height: 40, backgroundColor: '#0F172A' }}
+                                    backgroundColor="#0F172A"
+                                    isCyclic={true}
+                                    selectedValue={((endTime.getHours() + 11) % 12 + 1).toString()}
+                                    pickerData={Array.from({ length: 12 }, (_, i) => (i + 1).toString())}
+                                    onValueChange={(val: any) => handleHourChange(val, false)}
                                 />
                                 <Typography variant="h2" bold style={styles.colonText}>:</Typography>
                                 <Picker
-                                    style={styles.individualPicker}
+                                    style={[styles.minutePicker, { backgroundColor: '#0F172A' }]}
                                     textColor={Colors.text}
                                     textSize={18}
-                                    itemStyle={{ height: 40 }}
+                                    itemStyle={{ height: 40, backgroundColor: '#0F172A' }}
+                                    backgroundColor="#0F172A"
+                                    isCyclic={true}
                                     selectedValue={endTime.getMinutes().toString().padStart(2, '0')}
                                     pickerData={Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'))}
-                                    onValueChange={(val: any) => {
-                                        const newDate = new Date(endTime);
-                                        newDate.setMinutes(parseInt(val));
-                                        setEndTime(newDate);
-                                    }}
+                                    onValueChange={(val: any) => handleMinuteChange(val, false)}
                                 />
                             </View>
                         </View>
@@ -219,57 +293,56 @@ export const AddScheduleScreen: React.FC = () => {
                 </View>
 
                 <View style={styles.section}>
-                    <Typography variant="h2" bold style={styles.sectionTitle}>요일 선택</Typography>
-                    <View style={styles.dayRow}>
+                    <Typography variant="h2" bold style={styles.sectionTitle}>잠금 설정</Typography>
+                    <View style={styles.lockTypeRow}>
+                        <TouchableOpacity
+                            style={[styles.lockTypeButton, lockType === 'phone' && styles.lockTypeButtonActive]}
+                            onPress={() => setLockType('phone')}
+                        >
+                            <Icon name="phone-portrait-outline" size={24} color={lockType === 'phone' ? Colors.primary : Colors.textSecondary} />
+                            <Typography bold color={lockType === 'phone' ? Colors.primary : Colors.textSecondary}>핸드폰 잠금</Typography>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.lockTypeButton, lockType === 'app' && styles.lockTypeButtonActive]}
+                            onPress={() => setLockType('app')}
+                        >
+                            <Icon name="apps-outline" size={24} color={lockType === 'app' ? Colors.primary : Colors.textSecondary} />
+                            <Typography bold color={lockType === 'app' ? Colors.primary : Colors.textSecondary}>앱 잠금</Typography>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                <View style={styles.section}>
+                    <Typography variant="h2" bold style={styles.sectionTitle}>반복 요일</Typography>
+                    <View style={styles.daysRow}>
                         {days.map(day => (
                             <TouchableOpacity
                                 key={day}
                                 style={[styles.dayButton, selectedDays.includes(day) && styles.dayButtonActive]}
                                 onPress={() => toggleDay(day)}
                             >
-                                <Typography
-                                    variant="caption"
-                                    bold
-                                    color={selectedDays.includes(day) ? Colors.text : Colors.textSecondary}
-                                >
-                                    {day}
-                                </Typography>
+                                <Typography color={selectedDays.includes(day) ? Colors.text : Colors.textSecondary}>{day}</Typography>
                             </TouchableOpacity>
                         ))}
                     </View>
                 </View>
 
                 <View style={styles.section}>
-                    <Typography variant="h2" bold style={styles.sectionTitle}>상세 옵션</Typography>
-                    <View style={styles.optionCard}>
-                        <View style={styles.optionInfo}>
-                            <Typography bold>엄격 모드</Typography>
-                            <Typography variant="caption" color={Colors.textSecondary}>
-                                일정 진행 중에는 설정을 변경할 수 없습니다.
-                            </Typography>
-                        </View>
-                        <Switch
-                            value={strictMode}
-                            onValueChange={setStrictMode}
-                            trackColor={{ false: Colors.statusInactive, true: Colors.primary }}
-                            thumbColor={Colors.text}
-                        />
-                    </View>
-
-                    <TouchableOpacity style={styles.optionCard} onPress={handleAppSelect}>
-                        <View style={styles.optionInfo}>
-                            <Typography bold>허용할 앱 선택 (최대 1개)</Typography>
-                            <Typography variant="caption" color={Platform.OS === 'ios' ? Colors.primary : Colors.textSecondary}>
-                                {allowedApp ? allowedApp.label : (Platform.OS === 'ios' ? 'iOS 앱 선택기 열기' : '사용 가능한 앱 1개를 선택하세요')}
-                            </Typography>
+                    <Typography variant="h2" bold style={styles.sectionTitle}>허용할 앱</Typography>
+                    <TouchableOpacity style={styles.appSelector} onPress={handleAppSelect}>
+                        <View style={styles.appSelectorLeft}>
+                            <Icon name="apps-outline" size={24} color={Colors.primary} />
+                            <Typography style={styles.appSelectorText}>{allowedApp ? allowedApp.label : "선택된 앱 없음"}</Typography>
                         </View>
                         <Icon name="chevron-forward" size={20} color={Colors.textSecondary} />
                     </TouchableOpacity>
                 </View>
 
-                <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-                    <Typography variant="h2" bold>저장하기</Typography>
-                </TouchableOpacity>
+                {editingId && (
+                    <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+                        <Typography color="#FF3B30" bold>일정 삭제하기</Typography>
+                    </TouchableOpacity>
+                )}
             </ScrollView>
         </View>
     );
@@ -320,34 +393,56 @@ const styles = StyleSheet.create({
     timeCard: {
         flex: 1,
         backgroundColor: Colors.card,
-        borderRadius: 16,
-        padding: 10,
+        borderRadius: 12,
+        padding: 15,
         borderWidth: 1,
         borderColor: Colors.border,
-        justifyContent: 'center',
-        alignItems: 'center',
     },
     timeLabel: {
-        marginBottom: 5,
-        textAlign: 'center',
+        marginBottom: 8,
     },
-    pickerWrapper: {
+    pickerContainer: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
+        backgroundColor: '#0F172A',
+        borderRadius: 12,
+        paddingHorizontal: 2,
     },
-    individualPicker: {
+    ampmPicker: {
+        width: 42,
         height: 120,
-        width: 60,
-        backgroundColor: 'transparent',
+    },
+    hourPicker: {
+        width: 35,
+        height: 120,
+    },
+    minutePicker: {
+        width: 45,
+        height: 120,
     },
     colonText: {
-        fontSize: 20,
-        fontWeight: 'bold',
-        marginHorizontal: 2,
-        marginTop: -2,
+        marginHorizontal: 1,
     },
-    dayRow: {
+    lockTypeRow: {
+        flexDirection: 'row',
+        gap: 15,
+    },
+    lockTypeButton: {
+        flex: 1,
+        backgroundColor: Colors.card,
+        borderRadius: 12,
+        padding: 15,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: Colors.border,
+        gap: 8,
+    },
+    lockTypeButtonActive: {
+        backgroundColor: Colors.primary + '15',
+        borderColor: Colors.primary,
+    },
+    daysRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',
     },
@@ -362,29 +457,32 @@ const styles = StyleSheet.create({
         borderColor: Colors.border,
     },
     dayButtonActive: {
-        backgroundColor: Colors.primary,
+        backgroundColor: Colors.primary + '30',
         borderColor: Colors.primary,
     },
-    optionCard: {
-        backgroundColor: Colors.card,
-        borderRadius: 16,
-        padding: 20,
+    appSelector: {
         flexDirection: 'row',
-        alignItems: 'center',
         justifyContent: 'space-between',
-        marginBottom: 12,
+        alignItems: 'center',
+        backgroundColor: Colors.card,
+        borderRadius: 12,
+        padding: 18,
         borderWidth: 1,
         borderColor: Colors.border,
     },
-    optionInfo: {
-        flex: 1,
-        gap: 4,
-    },
-    saveButton: {
-        backgroundColor: Colors.primary,
-        borderRadius: 16,
-        padding: 20,
+    appSelectorLeft: {
+        flexDirection: 'row',
         alignItems: 'center',
-        marginTop: 20,
+        gap: 12,
     },
+    appSelectorText: {
+        fontSize: 16,
+    },
+    deleteButton: {
+        marginTop: 50,
+        padding: 15,
+        alignItems: 'center',
+        backgroundColor: '#FF3B3015',
+        borderRadius: 12,
+    }
 });

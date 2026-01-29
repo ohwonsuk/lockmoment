@@ -5,6 +5,8 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.widget.TextView
+import android.widget.Button
+import android.content.Intent
 import androidx.activity.OnBackPressedCallback
 
 class LockScreenActivity : Activity() {
@@ -27,6 +29,14 @@ class LockScreenActivity : Activity() {
         setContentView(R.layout.activity_lock_screen)
 
         timerText = findViewById(R.id.timerText)
+        val backToAppButton: Button = findViewById(R.id.backToAppButton)
+
+        backToAppButton.setOnClickListener {
+            val intent = Intent(this, MainActivity::class.java)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            startActivity(intent)
+            finish()
+        }
 
         // Disable back button
         // Note: In newer Android versions, onBackPressed() is deprecated but still works for Activities not using ComponentActivity or OnBackPressedDispatcher owner.

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Image } from 'react-native';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Icon } from '../components/Icon';
@@ -11,7 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export const AppSelectScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
     const insets = useSafeAreaInsets();
-    const [apps, setApps] = useState<{ label: string, packageName: string }[]>([]);
+    const [apps, setApps] = useState<{ label: string, packageName: string, icon?: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
 
@@ -75,7 +75,14 @@ export const AppSelectScreen: React.FC = () => {
                             style={styles.appItem}
                             onPress={() => handleSelect(app)}
                         >
-                            <View style={styles.appIconPlaceholder} />
+                            {app.icon ? (
+                                <Image
+                                    source={{ uri: `data:image/png;base64,${app.icon}` }}
+                                    style={styles.appIcon}
+                                />
+                            ) : (
+                                <View style={styles.appIconPlaceholder} />
+                            )}
                             <View style={styles.appInfo}>
                                 <Typography bold>{app.label}</Typography>
                                 <Typography variant="caption" color={Colors.textSecondary}>{app.packageName}</Typography>
@@ -137,6 +144,12 @@ const styles = StyleSheet.create({
         paddingHorizontal: 20,
         borderBottomWidth: 1,
         borderBottomColor: Colors.border,
+    },
+    appIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 8,
+        marginRight: 15,
     },
     appIconPlaceholder: {
         width: 40,

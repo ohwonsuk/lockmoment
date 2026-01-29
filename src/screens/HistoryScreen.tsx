@@ -4,6 +4,7 @@ import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Header } from '../components/Header';
 import { StorageService, HistoryItem } from '../services/StorageService';
+import { NativeLockControl } from '../services/NativeLockControl';
 
 export const HistoryScreen: React.FC = () => {
     const [history, setHistory] = useState<HistoryItem[]>([]);
@@ -13,8 +14,33 @@ export const HistoryScreen: React.FC = () => {
     }, []);
 
     const loadHistory = async () => {
-        const data = await StorageService.getHistory();
-        setHistory(data);
+        try {
+            // Android uses native recording to ensure history is captured even when app is in background
+            const nativeHistoryStr = await NativeLockControl.getNativeHistory();
+            const nativeHistory: HistoryItem[] = JSON.parse(nativeHistoryStr);
+
+            // Still check StorageService for any legacy/JS records and merge them if needed
+            const jsHistory = await StorageService.getHistory();
+
+            // Combine and sort by date/time (most recent first)
+            // Note: Since we've moved to native recording, nativeHistory will be the primary source
+            const combined = [...nativeHistory];
+
+            // Add JS records if they don't already exist in native (by checking ID or timestamp if available)
+            jsHistory.forEach(jsItem => {
+                if (!combined.find(c => c.id === jsItem.id)) {
+                    combined.push(jsItem);
+                }
+            });
+
+            // Simple sort (native already returns sorted, but combined might need it)
+            setHistory(combined);
+        } catch (e) {
+            console.error('Failed to load history:', e);
+            // Fallback to purely JS storage if native fails
+            const data = await StorageService.getHistory();
+            setHistory(data);
+        }
     };
 
     return (
@@ -38,7 +64,7 @@ export const HistoryScreen: React.FC = () => {
                                 <Typography variant="body">{item.duration}</Typography>
                                 <Typography
                                     variant="caption"
-                                    color={item.status === '완료' ? Colors.statusGreen : '#FF3B30'}
+                                    color={item.status === '완료' ? '#4ADE80' : '#FF3B30'}
                                 >
                                     {item.status}
                                 </Typography>

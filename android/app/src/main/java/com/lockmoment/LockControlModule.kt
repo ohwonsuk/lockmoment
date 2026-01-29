@@ -1,12 +1,18 @@
 package com.lockmoment
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.drawable.BitmapDrawable
+import android.graphics.drawable.Drawable
 import android.provider.Settings
 import android.text.TextUtils.SimpleStringSplitter
+import android.util.Base64
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
+import java.io.ByteArrayOutputStream
 
 class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
@@ -40,9 +46,9 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
     }
 
     @ReactMethod
-    fun startLock(durationMs: Double, type: String, promise: Promise) {
+    fun startLock(durationMs: Double, type: String, name: String, allowedPackage: String?, promise: Promise) {
         try {
-            LockManager.getInstance(reactApplicationContext).startLock(durationMs.toLong(), type)
+            LockManager.getInstance(reactApplicationContext).startLock(durationMs.toLong(), type, name, allowedPackage)
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("LOCK_ERROR", e.message)
@@ -52,7 +58,7 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
     @ReactMethod
     fun stopLock(promise: Promise) {
         try {
-            LockManager.getInstance(reactApplicationContext).stopLock()
+            LockManager.getInstance(reactApplicationContext).stopLock("중단")
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("UNLOCK_ERROR", e.message)
@@ -93,18 +99,64 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
             val pm = reactApplicationContext.packageManager
             val packages = pm.getInstalledPackages(0)
             val appList = com.facebook.react.bridge.Arguments.createArray()
+            val myPackageName = reactApplicationContext.packageName
             
             for (packageInfo in packages) {
-                // Filter out system apps if necessary, but for now we list all for selection
-                // Often we might want only apps with a launcher intent
-                val intent = pm.getLaunchIntentForPackage(packageInfo.packageName)
-                if (intent != null) {
-                    val appMap = com.facebook.react.bridge.Arguments.createMap()
-                    val label = packageInfo.applicationInfo?.loadLabel(pm)?.toString() ?: "Unknown App"
-                    appMap.putString("label", label)
-                    appMap.putString("packageName", packageInfo.packageName)
-                    appList.pushMap(appMap)
+                val packageName = packageInfo.packageName
+                if (packageName == myPackageName) continue
+
+                val appInfo = packageInfo.applicationInfo ?: continue
+                
+                // Detailed filtering for system apps
+                val isSystemApp = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                val isUpdatedSystemApp = (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0
+                
+                if (isSystemApp && !isUpdatedSystemApp) {
+                    // List of essential system apps we want to ALLOW if they have a launcher
+                    val whitelist = listOf("calendar", "camera", "contacts", "gallery", "clock", "calculator", "notes")
+                    val lowerPackage = packageName.lowercase()
+                    
+                    val isEssential = whitelist.any { lowerPackage.contains(it) }
+                    
+                    if (!isEssential) {
+                        // Filter out internal system components by common keywords
+                        if (lowerPackage.contains("provider") || 
+                            lowerPackage.contains("service") || 
+                            lowerPackage.contains("overlay") ||
+                            lowerPackage.contains("systemui") ||
+                            lowerPackage.contains("bluetooth") ||
+                            lowerPackage.contains("certinstaller") ||
+                            lowerPackage.contains("ims") ||
+                            lowerPackage.contains("keychain") ||
+                            lowerPackage.contains("stk") ||
+                            lowerPackage.contains("backupconfirm") ||
+                            lowerPackage.contains("captiveportallogin") ||
+                            lowerPackage.startsWith("com.android.") ||
+                            lowerPackage.startsWith("android.") ||
+                            packageName == "android") {
+                            continue
+                        }
+                    }
                 }
+
+                // Only show apps that can be launched (user apps)
+                val launchIntent = pm.getLaunchIntentForPackage(packageName)
+                if (launchIntent == null) continue
+
+                val label = appInfo.loadLabel(pm).toString()
+                val appMap = com.facebook.react.bridge.Arguments.createMap()
+                appMap.putString("label", label)
+                appMap.putString("packageName", packageName)
+
+                try {
+                    val icon = appInfo.loadIcon(pm)
+                    val iconBase64 = drawableToBase64(icon)
+                    appMap.putString("icon", iconBase64)
+                } catch (e: Exception) {
+                    appMap.putString("icon", "")
+                }
+
+                appList.pushMap(appMap)
             }
             promise.resolve(appList)
         } catch (e: Exception) {
@@ -112,10 +164,32 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
         }
     }
 
+    private fun drawableToBase64(drawable: Drawable): String {
+        val bitmap = if (drawable is BitmapDrawable) {
+            drawable.bitmap
+        } else {
+            val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 100
+            val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 100
+            val b = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(b)
+            drawable.setBounds(0, 0, canvas.width, canvas.height)
+            drawable.draw(canvas)
+            b
+        }
+
+        val byteArrayOutputStream = ByteArrayOutputStream()
+        val scaledBitmap = if (bitmap.width > 128) {
+            Bitmap.createScaledBitmap(bitmap, 128, 128, true)
+        } else {
+            bitmap
+        }
+        scaledBitmap.compress(Bitmap.CompressFormat.PNG, 100, byteArrayOutputStream)
+        val byteArray = byteArrayOutputStream.toByteArray()
+        return Base64.encodeToString(byteArray, Base64.NO_WRAP)
+    }
+
     @ReactMethod
     fun checkAuthorization(promise: Promise) {
-        // Map accessibility permission to a status number similar to iOS
-        // 2 = Authorized (matched in JS)
         val context = reactApplicationContext
         val expectedComponentName = "${context.packageName}/${LockAccessibilityService::class.java.canonicalName}"
         
@@ -146,6 +220,8 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
         endTime: String,
         days: com.facebook.react.bridge.ReadableArray,
         lockType: String,
+        name: String,
+        allowedPackage: String?,
         promise: Promise
     ) {
         try {
@@ -160,7 +236,9 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
                 startTime,
                 endTime,
                 daysList,
-                lockType
+                lockType,
+                name,
+                allowedPackage
             )
             promise.resolve(true)
         } catch (e: Exception) {
@@ -191,9 +269,24 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
     @ReactMethod
     fun openDefaultDialer(promise: Promise) {
         try {
-            val intent = android.content.Intent(android.content.Intent.ACTION_DIAL)
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            reactApplicationContext.startActivity(intent)
+            val lockManager = LockManager.getInstance(reactApplicationContext)
+            lockManager.updateDefaultApps() // Refresh just in case
+            
+            val intent = if (lockManager.defaultDialerPkg != null) {
+                reactApplicationContext.packageManager.getLaunchIntentForPackage(lockManager.defaultDialerPkg!!)
+            } else {
+                android.content.Intent(android.content.Intent.ACTION_DIAL)
+            }
+            
+            if (intent == null) {
+                // Fallback to generic action
+                val fallbackIntent = android.content.Intent(android.content.Intent.ACTION_DIAL)
+                fallbackIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                reactApplicationContext.startActivity(fallbackIntent)
+            } else {
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                reactApplicationContext.startActivity(intent)
+            }
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("DIALER_ERROR", e.message)
@@ -203,13 +296,39 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
     @ReactMethod
     fun openDefaultMessages(promise: Promise) {
         try {
-            val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO)
-            intent.data = android.net.Uri.parse("smsto:")
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            reactApplicationContext.startActivity(intent)
+            val lockManager = LockManager.getInstance(reactApplicationContext)
+            lockManager.updateDefaultApps()
+            
+            val intent = if (lockManager.defaultSmsPkg != null) {
+                reactApplicationContext.packageManager.getLaunchIntentForPackage(lockManager.defaultSmsPkg!!)
+            } else {
+                val smsIntent = android.content.Intent(android.content.Intent.ACTION_SENDTO)
+                smsIntent.data = android.net.Uri.parse("smsto:")
+                smsIntent
+            }
+
+            if (intent == null) {
+                val fallbackIntent = android.content.Intent(android.content.Intent.ACTION_SENDTO)
+                fallbackIntent.data = android.net.Uri.parse("smsto:")
+                fallbackIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                reactApplicationContext.startActivity(fallbackIntent)
+            } else {
+                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                reactApplicationContext.startActivity(intent)
+            }
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("MESSAGES_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun getNativeHistory(promise: Promise) {
+        try {
+            val history = LockManager.getInstance(reactApplicationContext).getHistory()
+            promise.resolve(history)
+        } catch (e: Exception) {
+            promise.reject("HISTORY_ERROR", e.message)
         }
     }
 }

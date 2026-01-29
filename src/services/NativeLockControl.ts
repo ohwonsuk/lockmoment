@@ -7,17 +7,18 @@ export interface LockControlInterface {
     checkAccessibilityPermission(): Promise<boolean>;
     requestAuthorization(): Promise<boolean>;
     checkAuthorization(): Promise<number>;
-    startLock(durationMs: number, type: string): Promise<boolean>;
+    startLock(durationMs: number, type: string, name: string, allowedPackage?: string): Promise<boolean>;
     stopLock(): Promise<boolean>;
     isLocked(): Promise<boolean>;
     getRemainingTime(): Promise<number>;
-    getInstalledApps(): Promise<{ label: string, packageName: string }[]>;
+    getInstalledApps(): Promise<{ label: string, packageName: string, icon?: string }[]>;
     presentFamilyActivityPicker(): Promise<boolean>;
-    scheduleAlarm(scheduleId: string, startTime: string, endTime: string, days: string[], lockType: string): Promise<boolean>;
+    scheduleAlarm(scheduleId: string, startTime: string, endTime: string, days: string[], lockType: string, name: string, allowedPackage?: string): Promise<boolean>;
     cancelAlarm(scheduleId: string): Promise<boolean>;
     restoreLockState(): Promise<boolean>;
     openDefaultDialer(): Promise<boolean>;
     openDefaultMessages(): Promise<boolean>;
+    getNativeHistory(): Promise<string>;
 }
 
 const defaultLockControl: LockControlInterface = {
@@ -35,6 +36,7 @@ const defaultLockControl: LockControlInterface = {
     restoreLockState: async () => false,
     openDefaultDialer: async () => false,
     openDefaultMessages: async () => false,
+    getNativeHistory: async () => "[]",
 };
 
 export const NativeLockControl: LockControlInterface = LockControl || defaultLockControl;
