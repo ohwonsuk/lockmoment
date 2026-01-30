@@ -94,5 +94,22 @@ export const StorageService = {
         } catch (e) {
             console.error('Failed to save history', e);
         }
+    },
+
+    async getPreventAppRemoval(): Promise<boolean> {
+        try {
+            const val = await AsyncStorage.getItem('@lockmoment_prevent_removal');
+            return val === 'true';
+        } catch (e) {
+            return false;
+        }
+    },
+
+    async setPreventAppRemoval(prevent: boolean): Promise<void> {
+        try {
+            await AsyncStorage.setItem('@lockmoment_prevent_removal', prevent ? 'true' : 'false');
+        } catch (e) {
+            console.error('Failed to save removal setting', e);
+        }
     }
 };

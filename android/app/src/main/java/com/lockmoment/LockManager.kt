@@ -15,6 +15,7 @@ class LockManager private constructor(private val context: Context) {
     var lockType: String = "app"
     var currentLockName: String = "바로 잠금"
     var currentLockStartTime: Long = 0
+    var preventAppRemoval: Boolean = false
     
     var defaultDialerPkg: String? = null
     var defaultSmsPkg: String? = null
@@ -86,12 +87,13 @@ class LockManager private constructor(private val context: Context) {
     }
 
     // Updated signature: packagesJson contains either allowed package (legacy) or list of blocked packages
-    fun startLock(durationMs: Long, type: String = "app", name: String = "바로 잠금", packagesJson: String? = null) {
+    fun startLock(durationMs: Long, type: String = "app", name: String = "바로 잠금", packagesJson: String? = null, preventRemoval: Boolean = false) {
         currentLockStartTime = System.currentTimeMillis()
         endTime = currentLockStartTime + durationMs
         lockType = type
         currentLockName = name
         isLocked = true
+        preventAppRemoval = preventRemoval
         
         // Reset lists
         blockedPackages.clear()
@@ -124,19 +126,45 @@ class LockManager private constructor(private val context: Context) {
             }
         }
         
+        if (preventAppRemoval) {
+            setUninstallBlocked(true)
+        }
+        
         updateDefaultApps()
         saveLockState()
         
         NotificationHelper.sendNotification(context, "잠금 시작", "'$name'이 시작되었습니다.")
     }
 
+    fun setUninstallBlocked(blocked: Boolean) {
+        try {
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+            val adminComponent = android.content.ComponentName(context, LockDeviceAdminReceiver::class.java)
+            
+            if (dpm.isAdminActive(adminComponent)) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    dpm.setUninstallBlocked(adminComponent, context.packageName, blocked)
+                    Log.d("LockManager", "Uninstall blocked: $blocked")
+                }
+            } else {
+                Log.w("LockManager", "Device Admin not active, cannot set uninstall blocked")
+            }
+        } catch (e: Exception) {
+            Log.e("LockManager", "Failed to set uninstall blocked: ${e.message}")
+        }
+    }
     fun stopLock(status: String = "완료") {
         if (!isLocked) return
 
         addHistoryEntry(currentLockName, currentLockStartTime, System.currentTimeMillis(), status)
 
+        if (preventAppRemoval) {
+            setUninstallBlocked(false)
+        }
+        
         isLocked = false
         endTime = 0
+        preventAppRemoval = false
         
         clearLockState()
         
@@ -228,6 +256,7 @@ class LockManager private constructor(private val context: Context) {
             putString("lockType", lockType)
             putString("lockName", currentLockName)
             putLong("startTime", currentLockStartTime)
+            putBoolean("preventAppRemoval", preventAppRemoval)
             putString("allowedPackage", dynamicAllowedPackage)
             putString("blockedPackages", JSONArray(blockedPackages).toString())
             apply()
@@ -241,6 +270,7 @@ class LockManager private constructor(private val context: Context) {
             lockType = prefs.getString("lockType", "app") ?: "app"
             currentLockName = prefs.getString("lockName", "바로 잠금") ?: "바로 잠금"
             currentLockStartTime = prefs.getLong("startTime", System.currentTimeMillis())
+            preventAppRemoval = prefs.getBoolean("preventAppRemoval", false)
             dynamicAllowedPackage = prefs.getString("allowedPackage", null)
             
             val blockedJson = prefs.getString("blockedPackages", "[]")

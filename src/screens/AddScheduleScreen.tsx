@@ -158,6 +158,7 @@ export const AddScheduleScreen: React.FC = () => {
         await StorageService.saveSchedule(newSchedule);
 
         try {
+            const preventRemoval = await StorageService.getPreventAppRemoval();
             await NativeLockControl.scheduleAlarm(
                 newSchedule.id,
                 newSchedule.startTime,
@@ -165,7 +166,8 @@ export const AddScheduleScreen: React.FC = () => {
                 newSchedule.days,
                 newSchedule.lockType,
                 newSchedule.name,
-                newSchedule.allowedApp?.packageName
+                newSchedule.allowedApp?.packageName,
+                preventRemoval
             );
         } catch (error) {
             console.error('Failed to schedule alarm:', error);

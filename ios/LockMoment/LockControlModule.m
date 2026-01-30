@@ -10,8 +10,9 @@ RCT_EXTERN_METHOD(presentFamilyActivityPicker : (NSString *)lockType resolve : (
     RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(startLock : (double)duration lockType : (
     NSString *)lockType name : (NSString *)name packagesJson : (NSString *)
-                      packagesJson resolve : (RCTPromiseResolveBlock)
-                          resolve rejecter : (RCTPromiseRejectBlock)reject)
+                      packagesJson preventAppRemoval : (BOOL)
+                          preventAppRemoval resolve : (RCTPromiseResolveBlock)
+                              resolve rejecter : (RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(stopLock : (RCTPromiseResolveBlock)
                       resolve rejecter : (RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(openNotificationSettings : (RCTPromiseResolveBlock)
@@ -26,12 +27,14 @@ RCT_EXTERN_METHOD(checkAccessibilityPermission : (RCTPromiseResolveBlock)
                       resolve rejecter : (RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(getInstalledApps : (RCTPromiseResolveBlock)
                       resolve rejecter : (RCTPromiseRejectBlock)reject)
-RCT_EXTERN_METHOD(scheduleAlarm : (NSString *)scheduleId startTime : (
-    NSString *)startTime endTime : (NSString *)endTime days : (NSArray *)
-                      days lockType : (NSString *)lockType name : (
-                          NSString *)name allowedPackage : (NSString *)
-                          allowedPackage resolve : (RCTPromiseResolveBlock)
-                              resolve rejecter : (RCTPromiseRejectBlock)reject)
+RCT_EXTERN_METHOD(
+    scheduleAlarm : (NSString *)scheduleId startTime : (NSString *)
+        startTime endTime : (NSString *)endTime days : (NSArray *)
+            days lockType : (NSString *)lockType name : (NSString *)
+                name allowedPackage : (NSString *)
+                    allowedPackage preventAppRemoval : (BOOL)
+                        preventAppRemoval resolve : (RCTPromiseResolveBlock)
+                            resolve rejecter : (RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(cancelAlarm : (NSString *)scheduleId resolve : (
     RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(openDefaultDialer : (RCTPromiseResolveBlock)

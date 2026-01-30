@@ -14,6 +14,7 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
         val lockName = intent.getStringExtra("lockName") ?: "예약 잠금"
         val durationMs = intent.getLongExtra("durationMs", 0)
         val allowedPackage = intent.getStringExtra("allowedPackage")
+        val preventAppRemoval = intent.getBooleanExtra("preventAppRemoval", false)
         
         if (durationMs <= 0) {
             Log.e("ScheduleAlarmReceiver", "Invalid duration")
@@ -22,8 +23,8 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
         
         try {
             // Start the lock
-            LockManager.getInstance(context).startLock(durationMs, lockType, lockName, allowedPackage)
-            Log.d("ScheduleAlarmReceiver", "Lock started for schedule: $lockName ($scheduleId), Allowed: $allowedPackage")
+            LockManager.getInstance(context).startLock(durationMs, lockType, lockName, allowedPackage, preventAppRemoval)
+            Log.d("ScheduleAlarmReceiver", "Lock started for schedule: $lockName ($scheduleId), Allowed: $allowedPackage, PreventRemoval: $preventAppRemoval")
             
             // Reschedule for next occurrence if it's a recurring schedule
             val days = intent.getStringArrayExtra("days")
@@ -36,7 +37,8 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
                     days.toList(),
                     lockType,
                     lockName,
-                    allowedPackage
+                    allowedPackage,
+                    preventAppRemoval
                 )
             }
         } catch (e: Exception) {

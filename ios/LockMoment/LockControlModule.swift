@@ -78,13 +78,10 @@ class LockControl: NSObject {
     }
   }
 
-  @objc(startLock:lockType:name:packagesJson:resolve:rejecter:)
-  func startLock(_ duration: Double, lockType: String, name: String, packagesJson: String?, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+  @objc(startLock:lockType:name:packagesJson:preventAppRemoval:resolve:rejecter:)
+  func startLock(_ duration: Double, lockType: String, name: String, packagesJson: String?, preventAppRemoval: Bool, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     if #available(iOS 15.0, *) {
-      // TODO: Handle lockType ('app' vs 'phone') logic here or in LockModel
-      // For now, we utilize the existing startLock which likely uses LockModel.shared.selection
-      // Pass duration and lockType to LockModel (duration is in ms)
-      LockModel.shared.startLock(duration: duration, type: lockType)
+      LockModel.shared.startLock(duration: duration, type: lockType, preventRemoval: preventAppRemoval)
       resolve(true)
     } else {
       reject("OS_VERSION_ERROR", "Requires iOS 15.0+", nil)
@@ -169,8 +166,8 @@ class LockControl: NSObject {
     resolve([])
   }
 
-  @objc(scheduleAlarm:startTime:endTime:days:lockType:name:allowedPackage:resolve:rejecter:)
-  func scheduleAlarm(_ scheduleId: String, startTime: String, endTime: String, days: [String], lockType: String, name: String, allowedPackage: String?, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+  @objc(scheduleAlarm:startTime:endTime:days:lockType:name:allowedPackage:preventAppRemoval:resolve:rejecter:)
+  func scheduleAlarm(_ scheduleId: String, startTime: String, endTime: String, days: [String], lockType: String, name: String, allowedPackage: String?, preventAppRemoval: Bool, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     resolve(true)
   }
 

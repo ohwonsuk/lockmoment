@@ -106,8 +106,9 @@ export const DashboardScreen: React.FC = () => {
     const handleQuickLockConfirm = async (h: number, m: number, type: 'app' | 'phone', packagesJson?: string) => {
         setIsPickerVisible(false);
         try {
+            const prevent = await StorageService.getPreventAppRemoval();
             const durationMs = (h * 3600 + m * 60) * 1000;
-            await NativeLockControl.startLock(durationMs, type, "바로 잠금", packagesJson);
+            await NativeLockControl.startLock(durationMs, type, "바로 잠금", packagesJson, prevent);
             updateStatus(); // Immediate feedback
         } catch (error: any) {
             Alert.alert("오류", error.message);
@@ -159,6 +160,7 @@ export const DashboardScreen: React.FC = () => {
             }
         } else if (schedule && !schedule.isActive) {
             try {
+                const prevent = await StorageService.getPreventAppRemoval();
                 await NativeLockControl.scheduleAlarm(
                     id,
                     schedule.startTime,
@@ -166,7 +168,8 @@ export const DashboardScreen: React.FC = () => {
                     schedule.days,
                     schedule.lockType || 'app',
                     schedule.name,
-                    schedule.allowedApp?.packageName
+                    schedule.allowedApp?.packageName,
+                    prevent
                 );
             } catch (error) {
                 console.error('Failed to schedule alarm:', error);

@@ -72,14 +72,17 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
     }
 
     @ReactMethod
-    fun startLock(durationMs: Double, type: String, name: String, packagesJson: String?, promise: Promise) {
+    fun startLock(durationMs: Double, type: String, name: String, packagesJson: String?, preventAppRemoval: Boolean, promise: Promise) {
         try {
-            LockManager.getInstance(reactApplicationContext).startLock(durationMs.toLong(), type, name, packagesJson)
+            val context = reactApplicationContext
+            val lockManager = LockManager.getInstance(context)
+            lockManager.startLock(durationMs.toLong(), type, name, packagesJson, preventAppRemoval)
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("LOCK_ERROR", e.message)
         }
     }
+
 
     @ReactMethod
     fun stopLock(promise: Promise) {
@@ -88,6 +91,30 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("UNLOCK_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun checkDeviceAdminActive(promise: Promise) {
+        val context = reactApplicationContext
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as android.app.admin.DevicePolicyManager
+        val adminComponent = android.content.ComponentName(context, LockDeviceAdminReceiver::class.java)
+        promise.resolve(dpm.isAdminActive(adminComponent))
+    }
+
+    @ReactMethod
+    fun requestDeviceAdmin(promise: Promise) {
+        try {
+            val context = reactApplicationContext
+            val adminComponent = android.content.ComponentName(context, LockDeviceAdminReceiver::class.java)
+            val intent = android.content.Intent(android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN)
+            intent.putExtra(android.app.admin.DevicePolicyManager.EXTRA_DEVICE_ADMIN, adminComponent)
+            intent.putExtra(android.app.admin.DevicePolicyManager.EXTRA_ADD_EXPLANATION, "잠금 상태에서 앱 삭제를 방지하기 위해 권한이 필요합니다.")
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("DEVICE_ADMIN_ERROR", e.message)
         }
     }
 
@@ -248,6 +275,7 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
         lockType: String,
         name: String,
         allowedPackage: String?,
+        preventAppRemoval: Boolean,
         promise: Promise
     ) {
         try {
@@ -264,7 +292,8 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
                 daysList,
                 lockType,
                 name,
-                allowedPackage
+                allowedPackage,
+                preventAppRemoval
             )
             promise.resolve(true)
         } catch (e: Exception) {

@@ -7,14 +7,14 @@ export interface LockControlInterface {
     checkAccessibilityPermission(): Promise<boolean>;
     requestAuthorization(): Promise<boolean>;
     checkAuthorization(): Promise<number>;
-    startLock(durationMs: number, type: string, name: string, packagesJson?: string): Promise<boolean>;
+    startLock(durationMs: number, type: string, name: string, packagesJson?: string, preventAppRemoval?: boolean): Promise<boolean>;
     stopLock(): Promise<boolean>;
     isLocked(): Promise<boolean>;
     getRemainingTime(): Promise<number>;
     getInstalledApps(): Promise<{ label: string, packageName: string, icon?: string }[]>;
     presentFamilyActivityPicker(type?: string): Promise<boolean | number>;
     getSelectedAppCount(): Promise<number>;
-    scheduleAlarm(scheduleId: string, startTime: string, endTime: string, days: string[], lockType: string, name: string, allowedPackage?: string): Promise<boolean>;
+    scheduleAlarm(scheduleId: string, startTime: string, endTime: string, days: string[], lockType: string, name: string, allowedPackage?: string, preventAppRemoval?: boolean): Promise<boolean>;
     cancelAlarm(scheduleId: string): Promise<boolean>;
     restoreLockState(): Promise<boolean>;
     openDefaultDialer(): Promise<boolean>;
@@ -22,6 +22,8 @@ export interface LockControlInterface {
     openNotificationSettings(): Promise<boolean>;
     requestNotificationPermission(): Promise<boolean>;
     getNativeHistory(): Promise<string>;
+    checkDeviceAdminActive(): Promise<boolean>;
+    requestDeviceAdmin(): Promise<boolean>;
 }
 
 const defaultLockControl: LockControlInterface = {
@@ -43,6 +45,8 @@ const defaultLockControl: LockControlInterface = {
     openNotificationSettings: async () => false,
     requestNotificationPermission: async () => false,
     getNativeHistory: async () => "[]",
+    checkDeviceAdminActive: async () => false,
+    requestDeviceAdmin: async () => false,
 };
 
 export const NativeLockControl: LockControlInterface = LockControl || defaultLockControl;

@@ -77,7 +77,7 @@ class LockModel: ObservableObject {
         }
     }
     
-    func startLock(duration: Double = 0, type: String = "app") {
+    func startLock(duration: Double = 0, type: String = "app", preventRemoval: Bool = false) {
         self.currentType = type
         let sel = type == "phone" ? phoneSelection : appSelection
         
@@ -85,6 +85,11 @@ class LockModel: ObservableObject {
         store.shield.applications = sel.applicationTokens
         store.shield.applicationCategories = ShieldSettings.ActivityCategoryPolicy.specific(sel.categoryTokens)
         store.shield.webDomainCategories = ShieldSettings.ActivityCategoryPolicy.specific(sel.categoryTokens)
+        
+        // Apply app removal prevention if requested
+        if #available(iOS 16.0, *) {
+            store.application.denyAppRemoval = preventRemoval
+        }
         
         isLocked = true
         UserDefaults.standard.set(true, forKey: "isLocked")

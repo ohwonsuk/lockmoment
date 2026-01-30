@@ -22,7 +22,8 @@ object ScheduleAlarmManager {
         days: List<String>,
         lockType: String,
         name: String = "예약 잠금",
-        allowedPackage: String? = null
+        allowedPackage: String? = null,
+        preventAppRemoval: Boolean = false
     ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
@@ -42,6 +43,7 @@ object ScheduleAlarmManager {
                 putExtra("endTime", endTime)
                 putExtra("days", days.toTypedArray())
                 putExtra("allowedPackage", allowedPackage)
+                putExtra("preventAppRemoval", preventAppRemoval)
             }
             
             val pendingIntent = PendingIntent.getBroadcast(
@@ -70,7 +72,7 @@ object ScheduleAlarmManager {
         }
         
         // Save schedule info for rescheduling after reboot
-        saveScheduleInfo(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage)
+        saveScheduleInfo(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage, preventAppRemoval)
     }
     
     fun cancelAlarm(context: Context, scheduleId: String) {
@@ -106,10 +108,11 @@ object ScheduleAlarmManager {
         days: List<String>,
         lockType: String,
         name: String,
-        allowedPackage: String?
+        allowedPackage: String?,
+        preventAppRemoval: Boolean
     ) {
         // Reschedule for next week
-        scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage)
+        scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage, preventAppRemoval)
     }
     
     fun rescheduleAllAlarms(context: Context) {
@@ -126,8 +129,9 @@ object ScheduleAlarmManager {
             val allowedPackage = schedule.optString("allowedPackage", null)
             val daysArray = schedule.getJSONArray("days")
             val days = List(daysArray.length()) { daysArray.getString(it) }
+            val preventAppRemoval = schedule.optBoolean("preventAppRemoval", false)
             
-            scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage)
+            scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage, preventAppRemoval)
         }
     }
     
@@ -189,7 +193,8 @@ object ScheduleAlarmManager {
         days: List<String>,
         lockType: String,
         name: String,
-        allowedPackage: String?
+        allowedPackage: String?,
+        preventAppRemoval: Boolean
     ) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val schedulesJson = prefs.getString(KEY_SCHEDULES, "{}") ?: "{}"
@@ -202,6 +207,7 @@ object ScheduleAlarmManager {
             put("name", name)
             put("days", JSONArray(days))
             put("allowedPackage", allowedPackage)
+            put("preventAppRemoval", preventAppRemoval)
         }
         
         schedules.put(scheduleId, scheduleInfo)
