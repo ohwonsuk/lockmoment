@@ -31,6 +31,8 @@ class LockModel: ObservableObject {
     
     @Published var isLocked: Bool = false
     @Published var endTime: Date? = nil
+    var currentLockName: String = "바로 잠금"
+    var startTime: Date? = nil
     
     // Store reference to keep it alive
     var store = ManagedSettingsStore()
@@ -55,6 +57,9 @@ class LockModel: ObservableObject {
         }
         
         self.isLocked = UserDefaults.standard.bool(forKey: "isLocked")
+        self.currentLockName = UserDefaults.standard.string(forKey: "currentLockName") ?? "바로 잠금"
+        self.startTime = UserDefaults.standard.object(forKey: "lockStartTime") as? Date
+        
         if let time = UserDefaults.standard.object(forKey: "lockEndTime") as? Date {
             self.endTime = time
             _ = checkExpiration()
@@ -62,8 +67,8 @@ class LockModel: ObservableObject {
     }
     
     func checkExpiration() -> Bool {
-        if let time = endTime, time < Date() {
-            stopLock()
+        if isLocked, let time = endTime, time < Date() {
+            stopLock(status: "완료")
             return true
         }
         return false
@@ -77,8 +82,14 @@ class LockModel: ObservableObject {
         }
     }
     
-    func startLock(duration: Double = 0, type: String = "app", preventRemoval: Bool = false) {
+    func startLock(duration: Double = 0, type: String = "app", name: String = "바로 잠금", preventRemoval: Bool = false) {
         self.currentType = type
+        self.currentLockName = name
+        self.startTime = Date()
+        
+        UserDefaults.standard.set(name, forKey: "currentLockName")
+        UserDefaults.standard.set(startTime, forKey: "lockStartTime")
+        
         let sel = type == "phone" ? phoneSelection : appSelection
         
         // Apply shielding to the selected applications and categories
@@ -104,7 +115,11 @@ class LockModel: ObservableObject {
         }
     }
     
-    func stopLock() {
+    func stopLock(status: String = "완료") {
+        if isLocked {
+            addHistoryEntry(name: currentLockName, start: startTime ?? Date(), end: Date(), status: status)
+        }
+        
         store.shield.applications = nil
         store.shield.applicationCategories = nil
         store.shield.webDomainCategories = nil
@@ -112,7 +127,51 @@ class LockModel: ObservableObject {
         
         isLocked = false
         endTime = nil
+        startTime = nil
         UserDefaults.standard.set(false, forKey: "isLocked")
         UserDefaults.standard.removeObject(forKey: "lockEndTime")
+        UserDefaults.standard.removeObject(forKey: "lockStartTime")
+        UserDefaults.standard.removeObject(forKey: "currentLockName")
+    }
+
+    func addHistoryEntry(name: String, start: Date, end: Date, status: String) {
+        let fmt = DateFormatter()
+        fmt.dateFormat = "yyyy.MM.dd"
+        let dateStr = fmt.string(from: start)
+        
+        let durationSec = Int(end.timeIntervalSince(start))
+        let h = durationSec / 3600
+        let m = (durationSec % 3600) / 60
+        let s = durationSec % 60
+        
+        var durationStr = ""
+        if h > 0 { durationStr = "\(h)시간 \(m)분" }
+        else if m > 0 { durationStr = "\(m)분 \(s)초" }
+        else { durationStr = "\(s)초" }
+        
+        let entry: [String: Any] = [
+            "id": UUID().uuidString,
+            "date": dateStr,
+            "name": name,
+            "duration": durationStr,
+            "status": status,
+            "timestamp": start.timeIntervalSince1970 * 1000
+        ]
+        
+        var history = UserDefaults.standard.array(forKey: "lockHistory") as? [[String: Any]] ?? []
+        history.insert(entry, at: 0)
+        if history.count > 50 {
+            history = Array(history.prefix(50))
+        }
+        UserDefaults.standard.set(history, forKey: "lockHistory")
+    }
+
+    func getHistoryJson() -> String {
+        let history = UserDefaults.standard.array(forKey: "lockHistory") as? [[String: Any]] ?? []
+        if let data = try? JSONSerialization.data(withJSONObject: history, options: []),
+           let json = String(data: data, encoding: .utf8) {
+            return json
+        }
+        return "[]"
     }
 }

@@ -81,7 +81,7 @@ class LockControl: NSObject {
   @objc(startLock:lockType:name:packagesJson:preventAppRemoval:resolve:rejecter:)
   func startLock(_ duration: Double, lockType: String, name: String, packagesJson: String?, preventAppRemoval: Bool, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     if #available(iOS 15.0, *) {
-      LockModel.shared.startLock(duration: duration, type: lockType, preventRemoval: preventAppRemoval)
+      LockModel.shared.startLock(duration: duration, type: lockType, name: name, preventRemoval: preventAppRemoval)
       resolve(true)
     } else {
       reject("OS_VERSION_ERROR", "Requires iOS 15.0+", nil)
@@ -91,7 +91,7 @@ class LockControl: NSObject {
   @objc(stopLock:rejecter:)
   func stopLock(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     if #available(iOS 15.0, *) {
-      LockModel.shared.stopLock()
+      LockModel.shared.stopLock(status: "중단")
       resolve(true)
     } else {
       reject("OS_VERSION_ERROR", "Requires iOS 15.0+", nil)
@@ -224,6 +224,10 @@ class LockControl: NSObject {
 
   @objc(getNativeHistory:rejecter:)
   func getNativeHistory(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
-    resolve("[]")
+    if #available(iOS 15.0, *) {
+        resolve(LockModel.shared.getHistoryJson())
+    } else {
+        resolve("[]")
+    }
   }
 }

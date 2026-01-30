@@ -428,20 +428,23 @@ const styles = StyleSheet.create({
         backgroundColor: '#0F172A',
         borderRadius: 12,
         paddingHorizontal: 20,
-        height: Platform.OS === 'ios' ? 180 : 120, // Increased height for iOS
+        height: Platform.OS === 'ios' ? 130 : 120, // Increased height for iOS
         // overflow: 'hidden', // Removed to allow wheel visibility
     },
     ampmPicker: {
         width: Platform.OS === 'ios' ? 80 : 42,
         height: Platform.OS === 'ios' ? 180 : 120,
+        paddingTop: Platform.OS === 'ios' ? 70 : 0,
     },
     hourPicker: {
         width: Platform.OS === 'ios' ? 90 : 35,
         height: Platform.OS === 'ios' ? 180 : 120,
+        paddingTop: Platform.OS === 'ios' ? 70 : 0,
     },
     minutePicker: {
         width: Platform.OS === 'ios' ? 90 : 45,
         height: Platform.OS === 'ios' ? 180 : 120,
+        paddingTop: Platform.OS === 'ios' ? 70 : 0,
     },
     colonText: {
         fontSize: 24,
