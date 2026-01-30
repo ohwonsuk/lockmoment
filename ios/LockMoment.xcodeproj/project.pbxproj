@@ -9,10 +9,10 @@
 /* Begin PBXBuildFile section */
 		0C80B921A6F3F58F76C31292 /* libPods-LockMoment.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-LockMoment.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		290053042F231B4400878DB0 /* LockMoment/PickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 290053032F231B4400878DB0 /* LockMoment/PickerView.swift */; };
-		293074B22F235CBC001B31D6 /* LockMoment/LockControlModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 293074AF2F235CBC001B31D6 /* LockMoment/LockControlModule.swift */; };
-		293074B32F235CBC001B31D6 /* LockMoment/LockModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 293074B02F235CBC001B31D6 /* LockMoment/LockModel.swift */; };
-		293074B72F235DA0001B31D6 /* LockMoment/LockControlModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 293074B62F235DA0001B31D6 /* LockMoment/LockControlModule.m */; };
+		290053042F231B4400878DB0 /* PickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 290053032F231B4400878DB0 /* PickerView.swift */; };
+		293074B22F235CBC001B31D6 /* LockControlModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 293074AF2F235CBC001B31D6 /* LockControlModule.swift */; };
+		293074B32F235CBC001B31D6 /* LockModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 293074B02F235CBC001B31D6 /* LockModel.swift */; };
+		293074B72F235DA0001B31D6 /* LockControlModule.m in Sources */ = {isa = PBXBuildFile; fileRef = 293074B62F235DA0001B31D6 /* LockControlModule.m */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		778EAA79B9012B8D8BA63FE5 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
@@ -23,11 +23,11 @@
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = LockMoment/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = LockMoment/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = LockMoment/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		290053032F231B4400878DB0 /* LockMoment/PickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockMoment/PickerView.swift; sourceTree = "<group>"; };
+		290053032F231B4400878DB0 /* PickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockMoment/PickerView.swift; sourceTree = "<group>"; };
 		290053082F231B5800878DB0 /* LockMoment-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "LockMoment-Bridging-Header.h"; sourceTree = "<group>"; };
-		293074AF2F235CBC001B31D6 /* LockMoment/LockControlModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockMoment/LockControlModule.swift; sourceTree = "<group>"; };
-		293074B02F235CBC001B31D6 /* LockMoment/LockModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockMoment/LockModel.swift; sourceTree = "<group>"; };
-		293074B62F235DA0001B31D6 /* LockMoment/LockControlModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LockMoment/LockControlModule.m; sourceTree = "<group>"; };
+		293074AF2F235CBC001B31D6 /* LockControlModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockMoment/LockControlModule.swift; sourceTree = "<group>"; };
+		293074B02F235CBC001B31D6 /* LockModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockMoment/LockModel.swift; sourceTree = "<group>"; };
+		293074B62F235DA0001B31D6 /* LockControlModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LockMoment/LockControlModule.m; sourceTree = "<group>"; };
 		29451BF32F23102900F01565 /* LockMoment.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = LockMoment.entitlements; path = LockMoment/LockMoment.entitlements; sourceTree = "<group>"; };
 		3B4392A12AC88292D35C810B /* Pods-LockMoment.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-LockMoment.debug.xcconfig"; path = "Target Support Files/Pods-LockMoment/Pods-LockMoment.debug.xcconfig"; sourceTree = "<group>"; };
 		5709B34CF0A7D63546082F79 /* Pods-LockMoment.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-LockMoment.release.xcconfig"; path = "Target Support Files/Pods-LockMoment/Pods-LockMoment.release.xcconfig"; sourceTree = "<group>"; };
@@ -81,10 +81,10 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
-				293074B62F235DA0001B31D6 /* LockMoment/LockControlModule.m */,
-				293074AF2F235CBC001B31D6 /* LockMoment/LockControlModule.swift */,
-				293074B02F235CBC001B31D6 /* LockMoment/LockModel.swift */,
-				290053032F231B4400878DB0 /* LockMoment/PickerView.swift */,
+				293074B62F235DA0001B31D6 /* LockControlModule.m */,
+				293074AF2F235CBC001B31D6 /* LockControlModule.swift */,
+				293074B02F235CBC001B31D6 /* LockModel.swift */,
+				290053032F231B4400878DB0 /* PickerView.swift */,
 				13B07FAE1A68108700A75B9A /* LockMoment */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
@@ -214,13 +214,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-LockMoment/Pods-LockMoment-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-LockMoment/Pods-LockMoment-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -257,13 +253,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-LockMoment/Pods-LockMoment-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-LockMoment/Pods-LockMoment-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -277,11 +269,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				290053042F231B4400878DB0 /* LockMoment/PickerView.swift in Sources */,
-				293074B72F235DA0001B31D6 /* LockMoment/LockControlModule.m in Sources */,
+				290053042F231B4400878DB0 /* PickerView.swift in Sources */,
+				293074B72F235DA0001B31D6 /* LockControlModule.m in Sources */,
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
-				293074B22F235CBC001B31D6 /* LockMoment/LockControlModule.swift in Sources */,
-				293074B32F235CBC001B31D6 /* LockMoment/LockModel.swift in Sources */,
+				293074B22F235CBC001B31D6 /* LockControlModule.swift in Sources */,
+				293074B32F235CBC001B31D6 /* LockModel.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -304,7 +296,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.1;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -334,7 +326,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 0.1;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

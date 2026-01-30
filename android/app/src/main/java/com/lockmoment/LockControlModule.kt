@@ -72,9 +72,9 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
     }
 
     @ReactMethod
-    fun startLock(durationMs: Double, type: String, name: String, allowedPackage: String?, promise: Promise) {
+    fun startLock(durationMs: Double, type: String, name: String, packagesJson: String?, promise: Promise) {
         try {
-            LockManager.getInstance(reactApplicationContext).startLock(durationMs.toLong(), type, name, allowedPackage)
+            LockManager.getInstance(reactApplicationContext).startLock(durationMs.toLong(), type, name, packagesJson)
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("LOCK_ERROR", e.message)

@@ -15,16 +15,13 @@ export const DashboardScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
     const [isLocked, setIsLocked] = useState(false);
     const [remainingTime, setRemainingTime] = useState<number>(0);
+    const [endTimeDate, setEndTimeDate] = useState<Date | null>(null);
     const [hasPermission, setHasPermission] = useState(false);
     const [isPickerVisible, setIsPickerVisible] = useState(false);
     const [schedules, setSchedules] = useState<Schedule[]>([]);
-    const timerRef = useRef<NodeJS.Timeout | null>(null);
+    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     useEffect(() => {
-        const unsubscribe = navigate.addListener?.('focus', () => {
-            refreshAll();
-        });
-
         refreshAll();
         restoreLock();
 
@@ -33,7 +30,6 @@ export const DashboardScreen: React.FC = () => {
         timerRef.current = setInterval(updateStatus, 1000);
 
         return () => {
-            if (unsubscribe) unsubscribe();
             if (timerRef.current) clearInterval(timerRef.current);
         };
     }, [navigate]);
@@ -46,12 +42,23 @@ export const DashboardScreen: React.FC = () => {
             if (locked) {
                 const remaining = await NativeLockControl.getRemainingTime();
                 setRemainingTime(remaining);
+
+                // Calculate end time date object
+                const now = new Date();
+                // Avoid constant recalculation if remaining is stable, but remaining changes every second.
+                // Better to set it ONCE when lock starts or restores, but here we only have remaining.
+                // We can approximate: Date.now() + remaining.
+                setEndTimeDate(new Date(now.getTime() + remaining));
+
                 if (remaining <= 0) {
+                    await NativeLockControl.stopLock();
                     setIsLocked(false);
                     setRemainingTime(0);
+                    setEndTimeDate(null);
                 }
             } else {
                 setRemainingTime(0);
+                setEndTimeDate(null);
             }
         } catch (error) {
             console.error('Failed to update status:', error);
@@ -96,11 +103,11 @@ export const DashboardScreen: React.FC = () => {
         setIsPickerVisible(true);
     };
 
-    const handleQuickLockConfirm = async (h: number, m: number, type: 'app' | 'phone') => {
+    const handleQuickLockConfirm = async (h: number, m: number, type: 'app' | 'phone', packagesJson?: string) => {
         setIsPickerVisible(false);
         try {
             const durationMs = (h * 3600 + m * 60) * 1000;
-            await NativeLockControl.startLock(durationMs, type, "바로 잠금");
+            await NativeLockControl.startLock(durationMs, type, "바로 잠금", packagesJson);
             updateStatus(); // Immediate feedback
         } catch (error: any) {
             Alert.alert("오류", error.message);
@@ -132,6 +139,16 @@ export const DashboardScreen: React.FC = () => {
         return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
     };
 
+    const formatEndTime = (date: Date) => {
+        const month = date.getMonth() + 1;
+        const d = date.getDate();
+        const days = ['일', '월', '화', '수', '목', '금', '토'];
+        const day = days[date.getDay()];
+        const h = date.getHours();
+        const m = date.getMinutes().toString().padStart(2, '0');
+        return `종료예정 ${month}/${d}(${day}) ${h}:${m}`;
+    };
+
     const handleToggleSchedule = async (id: string) => {
         const schedule = schedules.find(s => s.id === id);
         if (schedule && schedule.isActive) {
@@ -161,19 +178,11 @@ export const DashboardScreen: React.FC = () => {
     };
 
     const handleOpenDialer = async () => {
-        if (Platform.OS === 'android') {
-            await NativeLockControl.openDefaultDialer();
-        } else {
-            Linking.openURL('telprompt:');
-        }
+        await NativeLockControl.openDefaultDialer();
     };
 
     const handleOpenMessages = async () => {
-        if (Platform.OS === 'android') {
-            await NativeLockControl.openDefaultMessages();
-        } else {
-            Linking.openURL('sms:');
-        }
+        await NativeLockControl.openDefaultMessages();
     };
 
     return (
@@ -197,6 +206,12 @@ export const DashboardScreen: React.FC = () => {
                         </View>
 
                         <Typography style={styles.remainingTimeText}>{formatTime(remainingTime)}</Typography>
+
+                        {endTimeDate && (
+                            <Typography variant="caption" color={Colors.textSecondary} style={{ marginTop: -10, marginBottom: 30 }}>
+                                {formatEndTime(endTimeDate)}
+                            </Typography>
+                        )}
 
                         <View style={styles.emergencyActions}>
                             <TouchableOpacity style={styles.emergencyButton} onPress={handleOpenDialer}>
