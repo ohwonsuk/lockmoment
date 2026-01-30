@@ -58,7 +58,15 @@ export const PermissionsScreen: React.FC = () => {
                     <Typography color={Colors.textSecondary} style={styles.description}>
                         잠금 시작 및 종료 알림을 받으려면 알림 권한이 필요합니다.
                     </Typography>
-                    <TouchableOpacity style={[styles.button, { backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border }]}>
+                    <TouchableOpacity
+                        style={[styles.button, { backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border }]}
+                        onPress={async () => {
+                            if (Platform.OS === 'android') {
+                                await NativeLockControl.requestNotificationPermission();
+                            }
+                            NativeLockControl.openNotificationSettings();
+                        }}
+                    >
                         <Typography>알림 설정으로 이동</Typography>
                     </TouchableOpacity>
                 </View>

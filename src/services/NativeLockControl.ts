@@ -18,6 +18,8 @@ export interface LockControlInterface {
     restoreLockState(): Promise<boolean>;
     openDefaultDialer(): Promise<boolean>;
     openDefaultMessages(): Promise<boolean>;
+    openNotificationSettings(): Promise<boolean>;
+    requestNotificationPermission(): Promise<boolean>;
     getNativeHistory(): Promise<string>;
 }
 
@@ -36,6 +38,8 @@ const defaultLockControl: LockControlInterface = {
     restoreLockState: async () => false,
     openDefaultDialer: async () => false,
     openDefaultMessages: async () => false,
+    openNotificationSettings: async () => false,
+    requestNotificationPermission: async () => false,
     getNativeHistory: async () => "[]",
 };
 

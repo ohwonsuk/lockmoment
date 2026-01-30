@@ -17,4 +17,7 @@ RCT_EXTERN_METHOD(startLock : (double)duration resolve : (
 RCT_EXTERN_METHOD(stopLock : (RCTPromiseResolveBlock)
                       resolve rejecter : (RCTPromiseRejectBlock)reject)
 
+RCT_EXTERN_METHOD(openNotificationSettings : (RCTPromiseResolveBlock)
+                      resolve rejecter : (RCTPromiseRejectBlock)reject)
+
 @end

@@ -90,4 +90,21 @@ class LockControl: NSObject {
       reject("OS_VERSION_ERROR", "Requires iOS 15.0+", nil)
     }
   }
+
+  @objc(openNotificationSettings:rejecter:)
+  func openNotificationSettings(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    DispatchQueue.main.async {
+      if let url = URL(string: UIApplication.openSettingsURLString) {
+        if UIApplication.shared.canOpenURL(url) {
+          UIApplication.shared.open(url, options: [:], completionHandler: { success in
+            resolve(success)
+          })
+        } else {
+          reject("URL_ERROR", "Cannot open settings URL", nil)
+        }
+      } else {
+        reject("URL_ERROR", "Invalid settings URL", nil)
+      }
+    }
+  }
 }

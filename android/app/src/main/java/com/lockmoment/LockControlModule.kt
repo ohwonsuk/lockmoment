@@ -13,8 +13,13 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import java.io.ByteArrayOutputStream
+import androidx.core.app.ActivityCompat
+import android.app.Activity
 
 class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
+    init {
+        NotificationHelper.createNotificationChannel(reactContext)
+    }
 
     override fun getName(): String {
         return "LockControl"
@@ -43,6 +48,27 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
         }
         
         promise.resolve(isEnabled)
+    }
+
+    @ReactMethod
+    fun requestNotificationPermission(promise: Promise) {
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                val activity = getCurrentActivity()
+                if (activity != null) {
+                    val permissions = arrayOf(android.Manifest.permission.POST_NOTIFICATIONS)
+                    ActivityCompat.requestPermissions(activity, permissions, 1001)
+                    promise.resolve(true)
+                } else {
+                    // If activity is null, we can't request via dialog, but user can still go to settings
+                    promise.resolve(false)
+                }
+            } else {
+                promise.resolve(true) // Not needed below Android 13
+            }
+        } catch (e: Exception) {
+            promise.reject("PERMISSION_ERROR", e.message)
+        }
     }
 
     @ReactMethod
@@ -319,6 +345,26 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("MESSAGES_ERROR", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun openNotificationSettings(promise: Promise) {
+        try {
+            val intent = android.content.Intent()
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                intent.action = android.provider.Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                intent.putExtra(android.provider.Settings.EXTRA_APP_PACKAGE, reactApplicationContext.packageName)
+            } else {
+                intent.action = "android.settings.APP_NOTIFICATION_SETTINGS"
+                intent.putExtra("app_package", reactApplicationContext.packageName)
+                intent.putExtra("app_uid", reactApplicationContext.applicationInfo.uid)
+            }
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            reactApplicationContext.startActivity(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("NOTIFICATION_SETTINGS_ERROR", e.message)
         }
     }
 

@@ -98,6 +98,8 @@ class LockManager private constructor(private val context: Context) {
         updateDefaultApps()
         saveLockState()
         Log.d("LockManager", "Lock started: $name, Allowed: $allowedPackage")
+        
+        NotificationHelper.sendNotification(context, "잠금 시작", "'$name'이 시작되었습니다.")
     }
 
     fun stopLock(status: String = "완료") {
@@ -110,6 +112,8 @@ class LockManager private constructor(private val context: Context) {
         
         clearLockState()
         Log.d("LockManager", "Lock stopped")
+        
+        NotificationHelper.sendNotification(context, "잠금 종료", "'$currentLockName'이 종료되었습니다.")
     }
 
     private fun addHistoryEntry(name: String, startMs: Long, endMs: Long, status: String) {
