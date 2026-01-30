@@ -182,13 +182,28 @@ class LockControl: NSObject {
   @objc(openDefaultDialer:rejecter:)
   func openDefaultDialer(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     DispatchQueue.main.async {
-      if let url = URL(string: "tel:") {
-        UIApplication.shared.open(url, options: [:]) { success in
-          resolve(success)
+      let schemes = ["contacts://", "mobilephone-contacts://", "tel:"]
+      
+      func tryOpen(index: Int) {
+        guard index < schemes.count else {
+          resolve(false)
+          return
         }
-      } else {
-        resolve(false)
+        
+        if let url = URL(string: schemes[index]) {
+          UIApplication.shared.open(url, options: [:]) { success in
+            if success {
+              resolve(true)
+            } else {
+              tryOpen(index: index + 1)
+            }
+          }
+        } else {
+          tryOpen(index: index + 1)
+        }
       }
+      
+      tryOpen(index: 0)
     }
   }
 

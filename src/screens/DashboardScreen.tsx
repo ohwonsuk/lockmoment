@@ -213,16 +213,18 @@ export const DashboardScreen: React.FC = () => {
                             </Typography>
                         )}
 
-                        <View style={styles.emergencyActions}>
-                            <TouchableOpacity style={styles.emergencyButton} onPress={handleOpenDialer}>
-                                <Icon name="call" size={20} color={Colors.text} />
-                                <Typography variant="caption" bold>전화</Typography>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.emergencyButton} onPress={handleOpenMessages}>
-                                <Icon name="chatbubble" size={20} color={Colors.text} />
-                                <Typography variant="caption" bold>메시지</Typography>
-                            </TouchableOpacity>
-                        </View>
+                        {Platform.OS !== 'ios' && (
+                            <View style={styles.emergencyActions}>
+                                <TouchableOpacity style={styles.emergencyButton} onPress={handleOpenDialer}>
+                                    <Icon name="call" size={20} color={Colors.text} />
+                                    <Typography variant="caption" bold>전화</Typography>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.emergencyButton} onPress={handleOpenMessages}>
+                                    <Icon name="chatbubble" size={20} color={Colors.text} />
+                                    <Typography variant="caption" bold>메시지</Typography>
+                                </TouchableOpacity>
+                            </View>
+                        )}
                     </View>
                 ) : (
                     <QuickLockCard onPress={handleQuickLock} />
