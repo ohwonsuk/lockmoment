@@ -3,6 +3,7 @@ import Foundation
 import FamilyControls
 import SwiftUI
 import UIKit
+import React
 
 @objc(LockControl)
 class LockControl: NSObject {
