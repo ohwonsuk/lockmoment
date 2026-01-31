@@ -41,8 +41,6 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string></string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -79,15 +77,6 @@
 		<string>SimpleLineIcons.ttf</string>
 		<string>Octicons.ttf</string>
 		<string>Zocial.ttf</string>
-	</array>
-	<key>LSApplicationQueriesSchemes</key>
-	<array>
-		<string>tel</string>
-		<string>sms</string>
-		<string>mobile-phone</string>
-		<string>contacts</string>
-		<string>content-contacts</string>
-		<string>mobilephone-contacts</string>
 	</array>
 </dict>
 </plist>
