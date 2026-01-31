@@ -3,39 +3,58 @@
 # Exit on error
 set -e
 
+echo "--- CI Post-Clone Script Starting ---"
+echo "Current Directory: $(pwd)"
+echo "Commit Message: $CI_COMMIT_MESSAGE"
+
 if [[ "$CI_COMMIT_MESSAGE" != *"[xcode-build]"* ]]; then
-  echo "Skipping build as [xcode-build] tag is missing in commit message."
+  echo "!!! [xcode-build] tag missing in commit message. Skipping dependency installation !!!"
+  echo "Note: This will likely cause the build to fail if Pods are not committed."
   exit 0
 fi
 
-# The script runs in the directory where it's located (ios/ci_scripts)
 # Navigate to the repository root
 cd ../..
+echo "Root Directory: $(pwd)"
 
 echo "--- Installing Node.js dependencies ---"
 if ! command -v npm &> /dev/null
 then
-    echo "npm could not be found, installing node via Homebrew..."
-    # Xcode Cloud comes with Homebrew
+    echo "npm not found, installing node via Homebrew..."
     brew install node
 fi
 
-npm install
+npm install --legacy-peer-deps
 
 echo "--- Installing CocoaPods ---"
-# Navigate back to ios directory
 cd ios
+echo "iOS Directory: $(pwd)"
 
-# Check if Gemfile exists in the root for bundled cocoapods
+# Ensure CocoaPods is installed
+if ! command -v pod &> /dev/null
+then
+    echo "pod command not found, installing cocoapods..."
+    gem install cocoapods
+fi
+
+# Run pod install with repo update
 if [ -f "../Gemfile" ]; then
     echo "Using Bundler for CocoaPods..."
     cd ..
     bundle install
     cd ios
-    bundle exec pod install
+    bundle exec pod install --repo-update
 else
     echo "Using system CocoaPods..."
-    pod install
+    pod install --repo-update
 fi
 
-echo "--- Xcode Cloud post-clone setup complete ---"
+echo "--- Verifying Generated Files ---"
+if [ -f "Pods/Target Support Files/Pods-LockMoment/Pods-LockMoment.release.xcconfig" ]; then
+    echo "SUCCESS: Pods configuration generated."
+else
+    echo "ERROR: Pods configuration NOT found!"
+    exit 1
+fi
+
+echo "--- CI Post-Clone Script Complete ---"
