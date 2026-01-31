@@ -23,7 +23,8 @@ object ScheduleAlarmManager {
         lockType: String,
         name: String = "예약 잠금",
         allowedPackage: String? = null,
-        preventAppRemoval: Boolean = false
+        preventAppRemoval: Boolean = false,
+        preLockMinutes: Int = 0
     ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         
@@ -69,10 +70,45 @@ object ScheduleAlarmManager {
             }
             
             Log.d("ScheduleAlarmManager", "Scheduled alarm for $name ($scheduleId) on $day at ${Date(triggerTime)}")
+
+            // Schedule pre-lock notification if enabled
+            if (preLockMinutes > 0) {
+                val preLockTriggerTime = triggerTime - (preLockMinutes * 60 * 1000L)
+                if (preLockTriggerTime > System.currentTimeMillis()) {
+                    val preIntent = Intent(context, PreLockNotificationReceiver::class.java).apply {
+                        putExtra("scheduleId", scheduleId)
+                        putExtra("lockName", name)
+                        putExtra("minutesBefore", preLockMinutes)
+                        putExtra("startTime", startTime)
+                    }
+                    
+                    val prePendingIntent = PendingIntent.getBroadcast(
+                        context,
+                        "${scheduleId}_${day}_pre".hashCode(),
+                        preIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                    )
+                    
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        alarmManager.setExactAndAllowWhileIdle(
+                            AlarmManager.RTC_WAKEUP,
+                            preLockTriggerTime,
+                            prePendingIntent
+                        )
+                    } else {
+                        alarmManager.setExact(
+                            AlarmManager.RTC_WAKEUP,
+                            preLockTriggerTime,
+                            prePendingIntent
+                        )
+                    }
+                    Log.d("ScheduleAlarmManager", "Scheduled pre-lock notification for $name on $day at ${Date(preLockTriggerTime)}")
+                }
+            }
         }
         
         // Save schedule info for rescheduling after reboot
-        saveScheduleInfo(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage, preventAppRemoval)
+        saveScheduleInfo(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage, preventAppRemoval, preLockMinutes)
     }
     
     fun cancelAlarm(context: Context, scheduleId: String) {
@@ -93,6 +129,16 @@ object ScheduleAlarmManager {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             alarmManager.cancel(pendingIntent)
+
+            // Cancel pre-lock notification
+            val preIntent = Intent(context, PreLockNotificationReceiver::class.java)
+            val prePendingIntent = PendingIntent.getBroadcast(
+                context,
+                "${scheduleId}_${day}_pre".hashCode(),
+                preIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            alarmManager.cancel(prePendingIntent)
         }
         
         // Remove from saved schedules
@@ -111,8 +157,9 @@ object ScheduleAlarmManager {
         allowedPackage: String?,
         preventAppRemoval: Boolean
     ) {
+        val preLockMinutes = (loadScheduleInfo(context, scheduleId))?.optInt("preLockMinutes", 0) ?: 0
         // Reschedule for next week
-        scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage, preventAppRemoval)
+        scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage, preventAppRemoval, preLockMinutes)
     }
     
     fun rescheduleAllAlarms(context: Context) {
@@ -130,8 +177,9 @@ object ScheduleAlarmManager {
             val daysArray = schedule.getJSONArray("days")
             val days = List(daysArray.length()) { daysArray.getString(it) }
             val preventAppRemoval = schedule.optBoolean("preventAppRemoval", false)
+            val preLockMinutes = schedule.optInt("preLockMinutes", 0)
             
-            scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage, preventAppRemoval)
+            scheduleAlarm(context, scheduleId, startTime, endTime, days, lockType, name, allowedPackage, preventAppRemoval, preLockMinutes)
         }
     }
     
@@ -194,7 +242,8 @@ object ScheduleAlarmManager {
         lockType: String,
         name: String,
         allowedPackage: String?,
-        preventAppRemoval: Boolean
+        preventAppRemoval: Boolean,
+        preLockMinutes: Int
     ) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val schedulesJson = prefs.getString(KEY_SCHEDULES, "{}") ?: "{}"
@@ -208,6 +257,7 @@ object ScheduleAlarmManager {
             put("days", JSONArray(days))
             put("allowedPackage", allowedPackage)
             put("preventAppRemoval", preventAppRemoval)
+            put("preLockMinutes", preLockMinutes)
         }
         
         schedules.put(scheduleId, scheduleInfo)

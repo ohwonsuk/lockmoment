@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, Switch, Platform, Alert } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, Switch, Platform } from 'react-native';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Header } from '../components/Header';
@@ -8,6 +8,7 @@ import { StorageService } from '../services/StorageService';
 import { NativeLockControl } from '../services/NativeLockControl';
 
 import { Icon } from '../components/Icon';
+import { useAlert } from '../context/AlertContext';
 
 const MenuItem: React.FC<{ title: string; icon: string; onPress: () => void; rightElement?: React.ReactNode }> = ({ title, icon, onPress, rightElement }) => (
     <TouchableOpacity style={styles.menuItem} onPress={onPress}>
@@ -21,6 +22,7 @@ const MenuItem: React.FC<{ title: string; icon: string; onPress: () => void; rig
 
 export const SettingsScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
+    const { showAlert } = useAlert();
     const [preventAppRemoval, setPreventAppRemoval] = useState(false);
 
     useEffect(() => {
@@ -36,14 +38,14 @@ export const SettingsScreen: React.FC = () => {
         if (value && Platform.OS === 'android') {
             const isActive = await NativeLockControl.checkDeviceAdminActive();
             if (!isActive) {
-                Alert.alert(
-                    "권한 필요",
-                    "앱 삭제 방지 기능을 사용하려면 기기 관리자 권한 활성화가 필요합니다.",
-                    [
-                        { text: "취소", onPress: () => setPreventAppRemoval(false), style: "cancel" },
-                        { text: "설정으로 이동", onPress: () => NativeLockControl.requestDeviceAdmin() }
-                    ]
-                );
+                showAlert({
+                    title: "권한 필요",
+                    message: "앱 삭제 방지 기능을 사용하려면 기기 관리자 권한 활성화가 필요합니다.",
+                    confirmText: "설정으로 이동",
+                    cancelText: "취소",
+                    onConfirm: () => NativeLockControl.requestDeviceAdmin(),
+                    onCancel: () => setPreventAppRemoval(false)
+                });
                 // We don't set it true yet, user must go to settings
                 return;
             }
@@ -85,9 +87,22 @@ export const SettingsScreen: React.FC = () => {
                 </View>
 
                 <View style={styles.section}>
-                    <MenuItem title="알림 설정" icon="notifications" onPress={() => { }} />
+                    <MenuItem
+                        title="알림 설정"
+                        icon="notifications"
+                        onPress={() => navigate('NotificationSettings')}
+                    />
                     <MenuItem title="도움말" icon="help-circle" onPress={() => { }} />
-                    <MenuItem title="버전 정보" icon="information-circle" onPress={() => { }} />
+                    <MenuItem
+                        title="버전 정보"
+                        icon="information-circle"
+                        onPress={() => { }}
+                        rightElement={
+                            <Typography variant="body" color={Colors.textSecondary}>
+                                v{require('../../package.json').version}
+                            </Typography>
+                        }
+                    />
                 </View>
             </ScrollView>
         </View>

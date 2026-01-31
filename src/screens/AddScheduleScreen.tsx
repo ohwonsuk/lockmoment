@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, Switch, Alert, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, Switch, Platform } from 'react-native';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Icon } from '../components/Icon';
@@ -9,11 +9,13 @@ import { Picker as IOSPicker } from '@react-native-picker/picker';
 import { Picker as AndroidPicker } from 'react-native-wheel-pick';
 import { StorageService, Schedule } from '../services/StorageService';
 import { NativeLockControl } from '../services/NativeLockControl';
+import { useAlert } from '../context/AlertContext';
 
 const isIOS = Platform.OS === 'ios';
 
 export const AddScheduleScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
+    const { showAlert } = useAlert();
     const insets = useSafeAreaInsets();
     const [name, setName] = useState('예약 잠금');
     const [startTime, setStartTime] = useState(new Date());
@@ -161,6 +163,11 @@ export const AddScheduleScreen: React.FC = () => {
 
         await StorageService.saveSchedule(newSchedule);
 
+        const notificationSettings = await StorageService.getNotificationSettings();
+        const preLockMinutes = (notificationSettings.enabled && notificationSettings.preLockEnabled)
+            ? notificationSettings.preLockMinutes
+            : 0;
+
         try {
             const preventRemoval = await StorageService.getPreventAppRemoval();
             await NativeLockControl.scheduleAlarm(
@@ -171,35 +178,35 @@ export const AddScheduleScreen: React.FC = () => {
                 newSchedule.lockType,
                 newSchedule.name,
                 newSchedule.allowedApp?.packageName,
-                preventRemoval
+                preventRemoval,
+                preLockMinutes
             );
         } catch (error) {
             console.error('Failed to schedule alarm:', error);
         }
 
-        Alert.alert("저장 완료", editingId ? "예약이 수정되었습니다." : "예약 잠금이 저장되었습니다.");
-        navigate('Dashboard');
+        showAlert({
+            title: "저장 완료",
+            message: editingId ? "예약이 수정되었습니다." : "예약 잠금이 저장되었습니다.",
+            onConfirm: () => navigate('Dashboard')
+        });
     };
 
     const handleDelete = async () => {
         if (!editingId) return;
 
-        Alert.alert(
-            "삭제 확인",
-            "이 예약을 삭제하시겠습니까?",
-            [
-                { text: "취소", style: "cancel" },
-                {
-                    text: "삭제",
-                    style: "destructive",
-                    onPress: async () => {
-                        await NativeLockControl.cancelAlarm(editingId);
-                        await StorageService.deleteSchedule(editingId);
-                        navigate('Dashboard');
-                    }
-                }
-            ]
-        );
+        showAlert({
+            title: "삭제 확인",
+            message: "이 예약을 삭제하시겠습니까?",
+            confirmText: "삭제",
+            cancelText: "취소",
+            type: 'error',
+            onConfirm: async () => {
+                await NativeLockControl.cancelAlarm(editingId);
+                await StorageService.deleteSchedule(editingId);
+                navigate('Dashboard');
+            }
+        });
     };
 
     return (

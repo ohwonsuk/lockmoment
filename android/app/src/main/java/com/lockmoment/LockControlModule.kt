@@ -273,9 +273,9 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
         endTime: String,
         days: com.facebook.react.bridge.ReadableArray,
         lockType: String,
-        name: String,
         allowedPackage: String?,
         preventAppRemoval: Boolean,
+        preLockMinutes: Double,
         promise: Promise
     ) {
         try {
@@ -293,7 +293,8 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
                 lockType,
                 name,
                 allowedPackage,
-                preventAppRemoval
+                preventAppRemoval,
+                preLockMinutes.toInt()
             )
             promise.resolve(true)
         } catch (e: Exception) {

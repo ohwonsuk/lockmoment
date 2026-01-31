@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert, Linking } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Platform, Linking } from 'react-native';
 import { Colors } from '../theme/Colors';
 import { Header } from '../components/Header';
 import { QuickLockCard } from '../components/QuickLockCard';
@@ -10,9 +10,11 @@ import { useAppNavigation } from '../navigation/NavigationContext';
 import { QuickLockPicker } from '../components/QuickLockPicker';
 import { Icon } from '../components/Icon';
 import { StorageService, Schedule } from '../services/StorageService';
+import { useAlert } from '../context/AlertContext';
 
 export const DashboardScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
+    const { showAlert } = useAlert();
     const [isLocked, setIsLocked] = useState(false);
     const [remainingTime, setRemainingTime] = useState<number>(0);
     const [endTimeDate, setEndTimeDate] = useState<Date | null>(null);
@@ -111,25 +113,21 @@ export const DashboardScreen: React.FC = () => {
             await NativeLockControl.startLock(durationMs, type, "바로 잠금", packagesJson, prevent);
             updateStatus(); // Immediate feedback
         } catch (error: any) {
-            Alert.alert("오류", error.message);
+            showAlert({ title: "오류", message: error.message });
         }
     };
 
     const handleStopLock = async () => {
-        Alert.alert(
-            "잠금 조기 종료",
-            "관리자 권한으로 잠금을 종료하시겠습니까?",
-            [
-                { text: "취소", style: "cancel" },
-                {
-                    text: "종료",
-                    onPress: async () => {
-                        await NativeLockControl.stopLock();
-                        updateStatus();
-                    }
-                }
-            ]
-        );
+        showAlert({
+            title: "잠금 조기 종료",
+            message: "관리자 권한으로 잠금을 종료하시겠습니까?",
+            confirmText: "종료",
+            cancelText: "취소",
+            onConfirm: async () => {
+                await NativeLockControl.stopLock();
+                updateStatus();
+            }
+        });
     };
 
     const formatTime = (ms: number) => {

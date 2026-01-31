@@ -7,6 +7,7 @@ import { HistoryScreen } from '../screens/HistoryScreen';
 import { LockingScreen } from '../screens/LockingScreen';
 import { AddScheduleScreen } from '../screens/AddScheduleScreen';
 import { AppSelectScreen } from '../screens/AppSelectScreen';
+import { NotificationSettingsScreen } from '../screens/NotificationSettingsScreen';
 import { Colors } from '../theme/Colors';
 import { useAppNavigation } from './NavigationContext';
 
@@ -29,6 +30,8 @@ export const AppNavigator: React.FC = () => {
                 return <AddScheduleScreen />;
             case 'AppSelect':
                 return <AppSelectScreen />;
+            case 'NotificationSettings':
+                return <NotificationSettingsScreen />;
             default:
                 return <DashboardScreen />;
         }

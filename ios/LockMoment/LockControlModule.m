@@ -28,13 +28,13 @@ RCT_EXTERN_METHOD(checkAccessibilityPermission : (RCTPromiseResolveBlock)
 RCT_EXTERN_METHOD(getInstalledApps : (RCTPromiseResolveBlock)
                       resolve rejecter : (RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(
-    scheduleAlarm : (NSString *)scheduleId startTime : (NSString *)
-        startTime endTime : (NSString *)endTime days : (NSArray *)
-            days lockType : (NSString *)lockType name : (NSString *)
-                name allowedPackage : (NSString *)
-                    allowedPackage preventAppRemoval : (BOOL)
-                        preventAppRemoval resolve : (RCTPromiseResolveBlock)
-                            resolve rejecter : (RCTPromiseRejectBlock)reject)
+    scheduleAlarm : (NSString *)scheduleId startTime : (
+        NSString *)startTime endTime : (NSString *)endTime days : (NSArray *)
+        days lockType : (NSString *)lockType name : (NSString *)name
+            allowedPackage : (NSString *)allowedPackage preventAppRemoval : (
+                BOOL)preventAppRemoval preLockMinutes : (double)
+                preLockMinutes resolve : (RCTPromiseResolveBlock)
+                    resolve rejecter : (RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(cancelAlarm : (NSString *)scheduleId resolve : (
     RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(openDefaultDialer : (RCTPromiseResolveBlock)

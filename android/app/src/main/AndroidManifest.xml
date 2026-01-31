@@ -50,6 +50,10 @@
         android:name=".ScheduleAlarmReceiver"
         android:enabled="true"
         android:exported="false" />
+      <receiver
+        android:name=".PreLockNotificationReceiver"
+        android:enabled="true"
+        android:exported="false" />
         <receiver
             android:name=".LockDeviceAdminReceiver"
             android:label="락모먼트 기기 관리자"

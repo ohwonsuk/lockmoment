@@ -14,7 +14,7 @@ export interface LockControlInterface {
     getInstalledApps(): Promise<{ label: string, packageName: string, icon?: string }[]>;
     presentFamilyActivityPicker(type?: string): Promise<boolean | number>;
     getSelectedAppCount(): Promise<number>;
-    scheduleAlarm(scheduleId: string, startTime: string, endTime: string, days: string[], lockType: string, name: string, allowedPackage?: string, preventAppRemoval?: boolean): Promise<boolean>;
+    scheduleAlarm(scheduleId: string, startTime: string, endTime: string, days: string[], lockType: string, name: string, allowedPackage?: string, preventAppRemoval?: boolean, preLockMinutes?: number): Promise<boolean>;
     cancelAlarm(scheduleId: string): Promise<boolean>;
     restoreLockState(): Promise<boolean>;
     openDefaultDialer(): Promise<boolean>;

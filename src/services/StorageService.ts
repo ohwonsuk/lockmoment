@@ -111,5 +111,25 @@ export const StorageService = {
         } catch (e) {
             console.error('Failed to save removal setting', e);
         }
+    },
+
+    async getNotificationSettings(): Promise<{ enabled: boolean; preLockEnabled: boolean; preLockMinutes: number }> {
+        try {
+            const val = await AsyncStorage.getItem('@lockmoment_notification_settings');
+            if (val) {
+                return JSON.parse(val);
+            }
+            return { enabled: true, preLockEnabled: true, preLockMinutes: 10 };
+        } catch (e) {
+            return { enabled: true, preLockEnabled: true, preLockMinutes: 10 };
+        }
+    },
+
+    async setNotificationSettings(settings: { enabled: boolean; preLockEnabled: boolean; preLockMinutes: number }): Promise<void> {
+        try {
+            await AsyncStorage.setItem('@lockmoment_notification_settings', JSON.stringify(settings));
+        } catch (e) {
+            console.error('Failed to save notification settings', e);
+        }
     }
 };

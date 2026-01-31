@@ -166,14 +166,82 @@ class LockControl: NSObject {
     resolve([])
   }
 
-  @objc(scheduleAlarm:startTime:endTime:days:lockType:name:allowedPackage:preventAppRemoval:resolve:rejecter:)
-  func scheduleAlarm(_ scheduleId: String, startTime: String, endTime: String, days: [String], lockType: String, name: String, allowedPackage: String?, preventAppRemoval: Bool, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+  @objc(scheduleAlarm:startTime:endTime:days:lockType:name:allowedPackage:preventAppRemoval:preLockMinutes:resolve:rejecter:)
+  func scheduleAlarm(_ scheduleId: String, startTime: String, endTime: String, days: [String], lockType: String, name: String, allowedPackage: String?, preventAppRemoval: Bool, preLockMinutes: Double, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    
+    let center = UNUserNotificationCenter.current()
+    
+    // First cancel any existing notifications for this schedule
+    let baseId = "prelock_\(scheduleId)"
+    center.removePendingNotificationRequests(withIdentifiers: days.map { "\(baseId)_\($0)" })
+
+    if preLockMinutes <= 0 {
+      resolve(true)
+      return
+    }
+
+    let timeParts = startTime.split(separator: ":")
+    guard timeParts.count == 2,
+          let hour = Int(timeParts[0]),
+          let minute = Int(timeParts[1]) else {
+      reject("INVALID_TIME", "Invalid start time format", nil)
+      return
+    }
+
+    // Days mapping: 월, 화, 수, 목, 금, 토, 일 -> 2, 3, 4, 5, 6, 7, 1 (Calendar.Component.weekday)
+    let dayMap: [String: Int] = [
+        "일": 1, "월": 2, "화": 3, "수": 4, "목": 5, "금": 6, "토": 7
+    ]
+
+    for day in days {
+        guard let weekday = dayMap[day] else { continue }
+        
+        var dateComponents = DateComponents()
+        dateComponents.weekday = weekday
+        dateComponents.hour = hour
+        dateComponents.minute = minute
+        dateComponents.second = 0
+        
+        // Subtract offset
+        let calendar = Calendar.current
+        if let startDate = calendar.date(from: dateComponents),
+           let triggerDate = calendar.date(byAdding: .minute, value: -Int(preLockMinutes), to: startDate) {
+            
+            let triggerComponents = calendar.dateComponents([.weekday, .hour, .minute, .second], from: triggerDate)
+            
+            let content = UNMutableNotificationContent()
+            content.title = "잠금 시작 예고"
+            content.body = "\(Int(preLockMinutes))분 뒤에 '\(name)'이 시작됩니다."
+            content.sound = .default
+            
+            let trigger = UNCalendarNotificationTrigger(dateMatching: triggerComponents, repeats: true)
+            let request = UNNotificationRequest(identifier: "\(baseId)_\(day)", content: content, trigger: trigger)
+            
+            center.add(request) { error in
+                if let error = error {
+                    print("Failed to schedule notification: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
     resolve(true)
   }
 
   @objc(cancelAlarm:resolve:rejecter:)
   func cancelAlarm(_ scheduleId: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
-    resolve(true)
+    let center = UNUserNotificationCenter.current()
+    let baseId = "prelock_\(scheduleId)"
+    
+    // We don't know exactly which days were scheduled, so we might need a better way or just remove by prefix if possible?
+    // Actually center doesn't support removal by prefix easily without fetching all pending.
+    // However, since we use "prelock_{scheduleId}_{day}", we can just fetch all and filter.
+    
+    center.getPendingNotificationRequests { requests in
+        let idsToRemove = requests.filter { $0.identifier.hasPrefix(baseId) }.map { $0.identifier }
+        center.removePendingNotificationRequests(withIdentifiers: idsToRemove)
+        resolve(true)
+    }
   }
 
   @objc(openDefaultDialer:rejecter:)
