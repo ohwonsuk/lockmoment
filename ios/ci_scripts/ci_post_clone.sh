@@ -3,6 +3,11 @@
 # Exit on error
 set -e
 
+if [[ "$CI_COMMIT_MESSAGE" != *"[xcode-build]"* ]]; then
+  echo "Skipping build as [xcode-build] tag is missing in commit message."
+  exit 0
+fi
+
 # The script runs in the directory where it's located (ios/ci_scripts)
 # Navigate to the repository root
 cd ../..
