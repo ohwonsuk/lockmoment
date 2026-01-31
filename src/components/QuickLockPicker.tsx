@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, TouchableOpacity, Modal, Platform, useWindowDimensions } from 'react-native';
-import { Picker } from 'react-native-wheel-pick';
+import { Picker as IOSPicker } from '@react-native-picker/picker';
+import { Picker as AndroidPicker } from 'react-native-wheel-pick';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { NativeLockControl } from '../services/NativeLockControl';
@@ -11,6 +12,8 @@ interface Props {
     onClose: () => void;
     onConfirm: (hours: number, minutes: number, type: 'app' | 'phone', packagesJson?: string) => void;
 }
+
+const isIOS = Platform.OS === 'ios';
 
 export const QuickLockPicker: React.FC<Props> = ({ isVisible, onClose, onConfirm }) => {
     const [hours, setHours] = useState('1');
@@ -150,44 +153,66 @@ export const QuickLockPicker: React.FC<Props> = ({ isVisible, onClose, onConfirm
                     <Typography variant="h2" bold style={styles.title}>잠금 시간 설정</Typography>
 
                     <View style={styles.pickerRow}>
-
-
                         <View style={styles.pickerGroup}>
-                            <Picker
-                                style={styles.picker}
-                                themeVariant="dark"
-                                backgroundColor="transparent"
-                                textColor="#FFFFFF"
-                                selectTextColor="#FFFFFF"
-                                isShowSelectLine={true}
-                                selectLineColor={Colors.primary}
-                                itemStyle={{ height: 50, color: '#FFFFFF', backgroundColor: 'transparent' }}
-                                textSize={Platform.OS === 'ios' ? 30 : 24}
-                                selectedValue={hours}
-                                pickerData={Array.from({ length: 25 }, (_, i) => i.toString())}
-                                onValueChange={(val: any) => setHours(val)}
-                            />
-                            {/* <Typography variant="caption" color={Colors.textSecondary}>시간</Typography> */}
+                            {isIOS ? (
+                                <IOSPicker
+                                    style={styles.picker}
+                                    selectedValue={hours}
+                                    onValueChange={(val) => setHours(val)}
+                                    itemStyle={styles.pickerItemIOS}
+                                >
+                                    {Array.from({ length: 25 }, (_, i) => (
+                                        <IOSPicker.Item key={i} label={i.toString()} value={i.toString()} />
+                                    ))}
+                                </IOSPicker>
+                            ) : (
+                                <AndroidPicker
+                                    style={[styles.picker, { backgroundColor: '#1E293B' }]}
+                                    themeVariant="dark"
+                                    backgroundColor="#1E293B"
+                                    textColor="#FFFFFF"
+                                    selectTextColor="#FFFFFF"
+                                    isShowSelectLine={true}
+                                    selectLineColor={Colors.primary}
+                                    itemStyle={{ height: 50, color: '#FFFFFF', backgroundColor: 'transparent' }}
+                                    textSize={24}
+                                    selectedValue={hours}
+                                    pickerData={Array.from({ length: 25 }, (_, i) => i.toString())}
+                                    onValueChange={(val: any) => setHours(val)}
+                                />
+                            )}
                         </View>
 
                         <Typography variant="h2" bold style={styles.colon}>:</Typography>
 
                         <View style={styles.pickerGroup}>
-                            <Picker
-                                style={styles.picker}
-                                themeVariant="dark"
-                                backgroundColor="transparent"
-                                textColor="#FFFFFF"
-                                selectTextColor="#FFFFFF"
-                                isShowSelectLine={true}
-                                selectLineColor={Colors.primary}
-                                itemStyle={{ height: 50, color: '#FFFFFF', backgroundColor: 'transparent' }}
-                                textSize={Platform.OS === 'ios' ? 30 : 24}
-                                selectedValue={minutes}
-                                pickerData={['00', '10', '20', '30', '40', '50']}
-                                onValueChange={(val: any) => setMinutes(val)}
-                            />
-                            {/* <Typography variant="caption" color={Colors.textSecondary}>분</Typography> */}
+                            {isIOS ? (
+                                <IOSPicker
+                                    style={styles.picker}
+                                    selectedValue={minutes}
+                                    onValueChange={(val) => setMinutes(val)}
+                                    itemStyle={styles.pickerItemIOS}
+                                >
+                                    {['00', '10', '20', '30', '40', '50'].map((val) => (
+                                        <IOSPicker.Item key={val} label={val} value={val} />
+                                    ))}
+                                </IOSPicker>
+                            ) : (
+                                <AndroidPicker
+                                    style={[styles.picker, { backgroundColor: '#1E293B' }]}
+                                    themeVariant="dark"
+                                    backgroundColor="#1E293B"
+                                    textColor="#FFFFFF"
+                                    selectTextColor="#FFFFFF"
+                                    isShowSelectLine={true}
+                                    selectLineColor={Colors.primary}
+                                    itemStyle={{ height: 50, color: '#FFFFFF', backgroundColor: 'transparent' }}
+                                    textSize={24}
+                                    selectedValue={minutes}
+                                    pickerData={['00', '10', '20', '30', '40', '50']}
+                                    onValueChange={(val: any) => setMinutes(val)}
+                                />
+                            )}
                         </View>
                     </View>
 
@@ -273,8 +298,12 @@ const styles = StyleSheet.create({
     picker: {
         width: Platform.OS === 'ios' ? 100 : 80,
         height: Platform.OS === 'ios' ? 150 : 150,
-        paddingTop: Platform.OS === 'ios' ? 50 : 0,
         backgroundColor: 'transparent',
+    },
+    pickerItemIOS: {
+        fontSize: 30,
+        height: 150,
+        color: '#FFFFFF',
     },
     ampmPicker: {
         width: Platform.OS === 'ios' ? 80 : 60,

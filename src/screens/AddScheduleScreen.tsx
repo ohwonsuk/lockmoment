@@ -5,9 +5,12 @@ import { Colors } from '../theme/Colors';
 import { Icon } from '../components/Icon';
 import { useAppNavigation } from '../navigation/NavigationContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DatePicker, Picker } from 'react-native-wheel-pick';
+import { Picker as IOSPicker } from '@react-native-picker/picker';
+import { Picker as AndroidPicker } from 'react-native-wheel-pick';
 import { StorageService, Schedule } from '../services/StorageService';
 import { NativeLockControl } from '../services/NativeLockControl';
+
+const isIOS = Platform.OS === 'ios';
 
 export const AddScheduleScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
@@ -20,6 +23,7 @@ export const AddScheduleScreen: React.FC = () => {
     const [lockType, setLockType] = useState('app');
     const [allowedApp, setAllowedApp] = useState<{ label: string, packageName: string } | null>(null);
     const [editingId, setEditingId] = useState<string | null>(null);
+
 
     useEffect(() => {
         const id = (globalThis as any).editingScheduleId;
@@ -228,42 +232,92 @@ export const AddScheduleScreen: React.FC = () => {
                         <View style={styles.timeCard}>
                             <Typography variant="caption" color={Colors.textSecondary} style={styles.timeLabel}>시작 시간</Typography>
                             <View style={styles.pickerContainer}>
-                                <Picker
-                                    style={[styles.ampmPicker, { backgroundColor: Platform.OS === 'ios' ? 'transparent' : '#0F172A' }]}
-                                    textColor="#FFFFFF"
-                                    selectTextColor="#FFFFFF"
-                                    textSize={Platform.OS === 'ios' ? 24 : 15}
-                                    itemStyle={{ height: 50, backgroundColor: 'transparent', color: '#FFFFFF' }}
-                                    backgroundColor={Platform.OS === 'ios' ? 'transparent' : '#0F172A'}
-                                    selectedValue={startTime.getHours() >= 12 ? '오후' : '오전'}
-                                    pickerData={['오전', '오후']}
-                                    onValueChange={(val: any) => handleAmPmChange(val, true)}
-                                />
-                                <Picker
-                                    style={[styles.hourPicker, { backgroundColor: Platform.OS === 'ios' ? 'transparent' : '#0F172A' }]}
-                                    textColor="#FFFFFF"
-                                    selectTextColor="#FFFFFF"
-                                    textSize={Platform.OS === 'ios' ? 24 : 18}
-                                    itemStyle={{ height: 50, backgroundColor: 'transparent', color: '#FFFFFF' }}
-                                    backgroundColor={Platform.OS === 'ios' ? 'transparent' : '#0F172A'}
-                                    isCyclic={true}
-                                    selectedValue={((startTime.getHours() + 11) % 12 + 1).toString()}
-                                    pickerData={Array.from({ length: 12 }, (_, i) => (i + 1).toString())}
-                                    onValueChange={(val: any) => handleHourChange(val, true)}
-                                />
+                                {isIOS ? (
+                                    <IOSPicker
+                                        style={styles.ampmPicker}
+                                        selectedValue={startTime.getHours() >= 12 ? '오후' : '오전'}
+                                        onValueChange={(val) => handleAmPmChange(val, true)}
+                                        itemStyle={styles.pickerItemIOS}
+                                    >
+                                        <IOSPicker.Item label="오전" value="오전" />
+                                        <IOSPicker.Item label="오후" value="오후" />
+                                    </IOSPicker>
+                                ) : (
+                                    <AndroidPicker
+                                        style={[styles.ampmPicker, { backgroundColor: '#1E293B' }]}
+                                        themeVariant="dark"
+                                        backgroundColor="#1E293B"
+                                        textColor="#FFFFFF"
+                                        selectTextColor="#FFFFFF"
+                                        isShowSelectLine={true}
+                                        selectLineColor={Colors.primary}
+                                        selectLineSize={2}
+                                        itemStyle={{ height: 50, backgroundColor: 'transparent', color: '#FFFFFF' }}
+                                        textSize={18}
+                                        selectedValue={startTime.getHours() >= 12 ? '오후' : '오전'}
+                                        pickerData={['오전', '오후']}
+                                        onValueChange={(val: any) => handleAmPmChange(val, true)}
+                                    />
+                                )}
+                                {isIOS ? (
+                                    <IOSPicker
+                                        style={styles.hourPicker}
+                                        selectedValue={((startTime.getHours() + 11) % 12 + 1).toString()}
+                                        onValueChange={(val) => handleHourChange(val, true)}
+                                        itemStyle={styles.pickerItemIOS}
+                                    >
+                                        {Array.from({ length: 12 }, (_, i) => (
+                                            <IOSPicker.Item key={i} label={(i + 1).toString()} value={(i + 1).toString()} />
+                                        ))}
+                                    </IOSPicker>
+                                ) : (
+                                    <AndroidPicker
+                                        style={[styles.hourPicker, { backgroundColor: '#1E293B' }]}
+                                        themeVariant="dark"
+                                        backgroundColor="#1E293B"
+                                        textColor="#FFFFFF"
+                                        selectTextColor="#FFFFFF"
+                                        isShowSelectLine={true}
+                                        selectLineColor={Colors.primary}
+                                        selectLineSize={2}
+                                        itemStyle={{ height: 50, backgroundColor: 'transparent', color: '#FFFFFF' }}
+                                        textSize={24}
+                                        isCyclic={true}
+                                        selectedValue={((startTime.getHours() + 11) % 12 + 1).toString()}
+                                        pickerData={Array.from({ length: 12 }, (_, i) => (i + 1).toString())}
+                                        onValueChange={(val: any) => handleHourChange(val, true)}
+                                    />
+                                )}
                                 <Typography style={styles.colonText}>:</Typography>
-                                <Picker
-                                    style={[styles.minutePicker, { backgroundColor: Platform.OS === 'ios' ? 'transparent' : '#0F172A' }]}
-                                    textColor="#FFFFFF"
-                                    selectTextColor="#FFFFFF"
-                                    textSize={Platform.OS === 'ios' ? 24 : 18}
-                                    itemStyle={{ height: 50, backgroundColor: 'transparent', color: '#FFFFFF' }}
-                                    backgroundColor={Platform.OS === 'ios' ? 'transparent' : '#0F172A'}
-                                    isCyclic={true}
-                                    selectedValue={startTime.getMinutes().toString().padStart(2, '0')}
-                                    pickerData={Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'))}
-                                    onValueChange={(val: any) => handleMinuteChange(val, true)}
-                                />
+                                {isIOS ? (
+                                    <IOSPicker
+                                        style={styles.minutePicker}
+                                        selectedValue={startTime.getMinutes().toString().padStart(2, '0')}
+                                        onValueChange={(val) => handleMinuteChange(val, true)}
+                                        itemStyle={styles.pickerItemIOS}
+                                    >
+                                        {Array.from({ length: 60 }, (_, i) => (
+                                            <IOSPicker.Item key={i} label={i.toString().padStart(2, '0')} value={i.toString().padStart(2, '0')} />
+                                        ))}
+                                    </IOSPicker>
+                                ) : (
+                                    <AndroidPicker
+                                        style={[styles.minutePicker, { backgroundColor: '#1E293B' }]}
+                                        themeVariant="dark"
+                                        backgroundColor="#1E293B"
+                                        textColor="#FFFFFF"
+                                        selectTextColor="#FFFFFF"
+                                        isShowSelectLine={true}
+                                        selectLineColor={Colors.primary}
+                                        selectLineSize={2}
+                                        itemStyle={{ height: 50, backgroundColor: 'transparent', color: '#FFFFFF' }}
+                                        textSize={24}
+                                        isCyclic={true}
+                                        selectedValue={startTime.getMinutes().toString().padStart(2, '0')}
+                                        pickerData={Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'))}
+                                        onValueChange={(val: any) => handleMinuteChange(val, true)}
+                                    />
+                                )}
                             </View>
                         </View>
 
@@ -271,42 +325,92 @@ export const AddScheduleScreen: React.FC = () => {
                         <View style={styles.timeCard}>
                             <Typography variant="caption" color={Colors.textSecondary} style={styles.timeLabel}>종료 시간</Typography>
                             <View style={styles.pickerContainer}>
-                                <Picker
-                                    style={[styles.ampmPicker, { backgroundColor: Platform.OS === 'ios' ? 'transparent' : '#0F172A' }]}
-                                    textColor="#FFFFFF"
-                                    selectTextColor="#FFFFFF"
-                                    textSize={Platform.OS === 'ios' ? 20 : 15}
-                                    itemStyle={{ height: 40, backgroundColor: Platform.OS === 'ios' ? 'transparent' : '#0F172A', color: '#FFFFFF' }}
-                                    backgroundColor={Platform.OS === 'ios' ? 'transparent' : '#0F172A'}
-                                    selectedValue={endTime.getHours() >= 12 ? '오후' : '오전'}
-                                    pickerData={['오전', '오후']}
-                                    onValueChange={(val: any) => handleAmPmChange(val, false)}
-                                />
-                                <Picker
-                                    style={[styles.hourPicker, { backgroundColor: Platform.OS === 'ios' ? 'transparent' : '#0F172A' }]}
-                                    textColor="#FFFFFF"
-                                    selectTextColor="#FFFFFF"
-                                    textSize={Platform.OS === 'ios' ? 20 : 18}
-                                    itemStyle={{ height: 40, backgroundColor: Platform.OS === 'ios' ? 'transparent' : '#0F172A', color: '#FFFFFF' }}
-                                    backgroundColor={Platform.OS === 'ios' ? 'transparent' : '#0F172A'}
-                                    isCyclic={true}
-                                    selectedValue={((endTime.getHours() + 11) % 12 + 1).toString()}
-                                    pickerData={Array.from({ length: 12 }, (_, i) => (i + 1).toString())}
-                                    onValueChange={(val: any) => handleHourChange(val, false)}
-                                />
+                                {isIOS ? (
+                                    <IOSPicker
+                                        style={styles.ampmPicker}
+                                        selectedValue={endTime.getHours() >= 12 ? '오후' : '오전'}
+                                        onValueChange={(val) => handleAmPmChange(val, false)}
+                                        itemStyle={styles.pickerItemIOS}
+                                    >
+                                        <IOSPicker.Item label="오전" value="오전" />
+                                        <IOSPicker.Item label="오후" value="오후" />
+                                    </IOSPicker>
+                                ) : (
+                                    <AndroidPicker
+                                        style={[styles.ampmPicker, { backgroundColor: '#1E293B' }]}
+                                        themeVariant="dark"
+                                        backgroundColor="#1E293B"
+                                        textColor="#FFFFFF"
+                                        selectTextColor="#FFFFFF"
+                                        isShowSelectLine={true}
+                                        selectLineColor={Colors.primary}
+                                        selectLineSize={2}
+                                        itemStyle={{ height: 50, backgroundColor: 'transparent', color: '#FFFFFF' }}
+                                        textSize={18}
+                                        selectedValue={endTime.getHours() >= 12 ? '오후' : '오전'}
+                                        pickerData={['오전', '오후']}
+                                        onValueChange={(val: any) => handleAmPmChange(val, false)}
+                                    />
+                                )}
+                                {isIOS ? (
+                                    <IOSPicker
+                                        style={styles.hourPicker}
+                                        selectedValue={((endTime.getHours() + 11) % 12 + 1).toString()}
+                                        onValueChange={(val) => handleHourChange(val, false)}
+                                        itemStyle={styles.pickerItemIOS}
+                                    >
+                                        {Array.from({ length: 12 }, (_, i) => (
+                                            <IOSPicker.Item key={i} label={(i + 1).toString()} value={(i + 1).toString()} />
+                                        ))}
+                                    </IOSPicker>
+                                ) : (
+                                    <AndroidPicker
+                                        style={[styles.hourPicker, { backgroundColor: '#1E293B' }]}
+                                        themeVariant="dark"
+                                        backgroundColor="#1E293B"
+                                        textColor="#FFFFFF"
+                                        selectTextColor="#FFFFFF"
+                                        isShowSelectLine={true}
+                                        selectLineColor={Colors.primary}
+                                        selectLineSize={2}
+                                        itemStyle={{ height: 50, backgroundColor: 'transparent', color: '#FFFFFF' }}
+                                        textSize={24}
+                                        isCyclic={true}
+                                        selectedValue={((endTime.getHours() + 11) % 12 + 1).toString()}
+                                        pickerData={Array.from({ length: 12 }, (_, i) => (i + 1).toString())}
+                                        onValueChange={(val: any) => handleHourChange(val, false)}
+                                    />
+                                )}
                                 <Typography style={styles.colonText}>:</Typography>
-                                <Picker
-                                    style={[styles.minutePicker, { backgroundColor: Platform.OS === 'ios' ? 'transparent' : '#0F172A' }]}
-                                    textColor="#FFFFFF"
-                                    selectTextColor="#FFFFFF"
-                                    textSize={Platform.OS === 'ios' ? 20 : 18}
-                                    itemStyle={{ height: 40, backgroundColor: Platform.OS === 'ios' ? 'transparent' : '#0F172A', color: '#FFFFFF' }}
-                                    backgroundColor={Platform.OS === 'ios' ? 'transparent' : '#0F172A'}
-                                    isCyclic={true}
-                                    selectedValue={endTime.getMinutes().toString().padStart(2, '0')}
-                                    pickerData={Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'))}
-                                    onValueChange={(val: any) => handleMinuteChange(val, false)}
-                                />
+                                {isIOS ? (
+                                    <IOSPicker
+                                        style={styles.minutePicker}
+                                        selectedValue={endTime.getMinutes().toString().padStart(2, '0')}
+                                        onValueChange={(val) => handleMinuteChange(val, false)}
+                                        itemStyle={styles.pickerItemIOS}
+                                    >
+                                        {Array.from({ length: 60 }, (_, i) => (
+                                            <IOSPicker.Item key={i} label={i.toString().padStart(2, '0')} value={i.toString().padStart(2, '0')} />
+                                        ))}
+                                    </IOSPicker>
+                                ) : (
+                                    <AndroidPicker
+                                        style={[styles.minutePicker, { backgroundColor: '#1E293B' }]}
+                                        themeVariant="dark"
+                                        backgroundColor="#1E293B"
+                                        textColor="#FFFFFF"
+                                        selectTextColor="#FFFFFF"
+                                        isShowSelectLine={true}
+                                        selectLineColor={Colors.primary}
+                                        selectLineSize={2}
+                                        itemStyle={{ height: 50, backgroundColor: 'transparent', color: '#FFFFFF' }}
+                                        textSize={24}
+                                        isCyclic={true}
+                                        selectedValue={endTime.getMinutes().toString().padStart(2, '0')}
+                                        pickerData={Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'))}
+                                        onValueChange={(val: any) => handleMinuteChange(val, false)}
+                                    />
+                                )}
                             </View>
                         </View>
                     </View>
@@ -417,6 +521,7 @@ const styles = StyleSheet.create({
         padding: 10,
         borderWidth: 1,
         borderColor: Colors.border,
+        overflow: 'visible',
     },
     timeLabel: {
         marginBottom: 8,
@@ -427,33 +532,33 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         backgroundColor: '#0F172A',
         borderRadius: 12,
-        paddingHorizontal: 20,
-        height: Platform.OS === 'ios' ? 130 : 120, // Increased height for iOS
-        // overflow: 'hidden', // Removed to allow wheel visibility
+        paddingHorizontal: 12,
+        height: isIOS ? 180 : 120,
     },
     ampmPicker: {
-        width: Platform.OS === 'ios' ? 80 : 42,
-        height: Platform.OS === 'ios' ? 180 : 120,
-        paddingTop: Platform.OS === 'ios' ? 70 : 0,
+        width: isIOS ? 100 : 60,
+        height: isIOS ? 180 : 120,
     },
     hourPicker: {
-        width: Platform.OS === 'ios' ? 90 : 35,
-        height: Platform.OS === 'ios' ? 180 : 120,
-        paddingTop: Platform.OS === 'ios' ? 70 : 0,
+        width: isIOS ? 100 : 35,
+        height: isIOS ? 180 : 120,
     },
     minutePicker: {
-        width: Platform.OS === 'ios' ? 90 : 45,
-        height: Platform.OS === 'ios' ? 180 : 120,
-        paddingTop: Platform.OS === 'ios' ? 70 : 0,
+        width: isIOS ? 100 : 45,
+        height: isIOS ? 180 : 120,
+    },
+    pickerItemIOS: {
+        fontSize: 22,
+        height: 180,
+        color: '#FFFFFF',
     },
     colonText: {
         fontSize: 24,
         fontWeight: 'bold',
-        marginHorizontal: 10,
+        marginHorizontal: isIOS ? 5 : 10,
         textAlignVertical: 'center',
-        paddingBottom: Platform.OS === 'ios' ? 5 : 0,
-        marginTop: Platform.OS === 'ios' ? 15 : 0, // Push down on iOS to align with wheels
         opacity: 0.9,
+        marginTop: isIOS ? -5 : 0, // iOS에서 콜론을 약간 위로 배치
     },
     lockTypeRow: {
         flexDirection: 'row',
