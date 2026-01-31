@@ -12,13 +12,6 @@ export HOMEBREW_NO_AUTO_UPDATE=1
 echo "현재 디렉토리: $(pwd)"
 echo "커밋 메시지: $CI_COMMIT_MESSAGE"
 
-# 태그 확인 (대소문자 구분 없이 확인)
-if [[ "${CI_COMMIT_MESSAGE,,}" != *"[xcode-build]"* ]]; then
-  echo "!!! [xcode-build] 태그가 커밋 메시지에 없습니다. 의존성 설치를 건너뜁니다. !!!"
-  # 만약 의존성이 커밋되지 않은 상태라면 이 지점 이후의 빌드는 실패하게 됩니다.
-  exit 0
-fi
-
 # 1. Node.js 설치 및 확인
 echo "--- Node.js 환경 확인 ---"
 if ! command -v node &> /dev/null; then
