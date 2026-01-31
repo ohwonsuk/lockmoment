@@ -8,7 +8,13 @@ set -e
 cd ../..
 
 echo "--- Installing Node.js dependencies ---"
-# Using --legacy-peer-deps might be safer for some RN setups, but npm install is standard
+if ! command -v npm &> /dev/null
+then
+    echo "npm could not be found, installing node via Homebrew..."
+    # Xcode Cloud comes with Homebrew
+    brew install node
+fi
+
 npm install
 
 echo "--- Installing CocoaPods ---"
