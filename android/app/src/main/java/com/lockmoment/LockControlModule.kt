@@ -273,6 +273,7 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
         endTime: String,
         days: com.facebook.react.bridge.ReadableArray,
         lockType: String,
+        name: String,
         allowedPackage: String?,
         preventAppRemoval: Boolean,
         preLockMinutes: Double,

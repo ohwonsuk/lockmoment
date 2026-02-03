@@ -11,6 +11,7 @@ import { QuickLockPicker } from '../components/QuickLockPicker';
 import { Icon } from '../components/Icon';
 import { StorageService, Schedule } from '../services/StorageService';
 import { useAlert } from '../context/AlertContext';
+import { WeeklySchedule } from '../components/WeeklySchedule';
 
 export const DashboardScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
@@ -228,7 +229,31 @@ export const DashboardScreen: React.FC = () => {
                         )}
                     </View>
                 ) : (
-                    <QuickLockCard onPress={handleQuickLock} />
+                    <>
+                        <QuickLockCard onPress={handleQuickLock} />
+
+                        <View style={styles.qrActions}>
+                            <TouchableOpacity
+                                style={styles.qrActionButton}
+                                onPress={() => navigate('QRScanner' as any)}
+                            >
+                                <View style={[styles.qrIconBadge, { backgroundColor: '#4F46E520' }]}>
+                                    <Icon name="scan" size={24} color="#6366F1" />
+                                </View>
+                                <Typography variant="caption" bold>QR 스캔 잠금</Typography>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={styles.qrActionButton}
+                                onPress={() => navigate('QRGenerator' as any)}
+                            >
+                                <View style={[styles.qrIconBadge, { backgroundColor: '#EC489920' }]}>
+                                    <Icon name="qr-code" size={24} color="#F472B6" />
+                                </View>
+                                <Typography variant="caption" bold>내 QR 생성</Typography>
+                            </TouchableOpacity>
+                        </View>
+                    </>
                 )}
 
                 <QuickLockPicker
@@ -238,7 +263,7 @@ export const DashboardScreen: React.FC = () => {
                 />
 
                 <View style={styles.sectionHeader}>
-                    <Typography variant="h2" bold>예약 잠금</Typography>
+                    <Typography variant="h2" bold>주간 예약 스케줄</Typography>
                     <TouchableOpacity style={styles.addButton} onPress={() => {
                         (globalThis as any).editingScheduleId = null;
                         navigate('AddSchedule');
@@ -250,33 +275,18 @@ export const DashboardScreen: React.FC = () => {
                     </TouchableOpacity>
                 </View>
 
-                {schedules.length === 0 ? (
-                    <View style={styles.emptyState}>
-                        <Typography color={Colors.textSecondary}>설정된 예약이 없습니다.</Typography>
-                    </View>
-                ) : (
-                    schedules.map(item => (
-                        <ScheduleItem
-                            key={item.id}
-                            schedule={{
-                                id: item.id,
-                                name: item.name,
-                                timeRange: `${item.startTime} - ${item.endTime}`,
-                                days: item.days,
-                                isActive: item.isActive
-                            }}
-                            onPress={() => {
-                                (globalThis as any).editingScheduleId = item.id;
-                                navigate('AddSchedule');
-                            }}
-                            onToggle={handleToggleSchedule}
-                        />
-                    ))
-                )}
+                <WeeklySchedule
+                    schedules={schedules}
+                    onPressItem={(id) => {
+                        (globalThis as any).editingScheduleId = id;
+                        navigate('AddSchedule');
+                    }}
+                    onToggle={handleToggleSchedule}
+                />
 
                 <View style={styles.footer}>
-                    <TouchableOpacity>
-                        <Typography color={Colors.textSecondary} variant="caption">관리자 모드</Typography>
+                    <TouchableOpacity onPress={() => navigate('Settings')}>
+                        <Typography color={Colors.textSecondary} variant="caption">기관 및 관리자 모드 설정</Typography>
                     </TouchableOpacity>
                 </View>
             </ScrollView>
@@ -379,6 +389,29 @@ const styles = StyleSheet.create({
     footer: {
         marginTop: 40,
         marginBottom: 20,
+        alignItems: 'center',
+    },
+    qrActions: {
+        flexDirection: 'row',
+        paddingHorizontal: 20,
+        gap: 12,
+        marginTop: 12,
+    },
+    qrActionButton: {
+        flex: 1,
+        backgroundColor: Colors.card,
+        padding: 16,
+        borderRadius: 20,
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: Colors.border,
+        gap: 8,
+    },
+    qrIconBadge: {
+        width: 44,
+        height: 44,
+        borderRadius: 14,
+        justifyContent: 'center',
         alignItems: 'center',
     },
 });

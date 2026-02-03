@@ -133,7 +133,7 @@ export const AddScheduleScreen: React.FC = () => {
     const handleAppSelect = async () => {
         if (Platform.OS === 'ios') {
             try {
-                const result = await NativeLockControl.presentFamilyActivityPicker();
+                const result = await NativeLockControl.presentFamilyActivityPicker(lockType);
                 if (typeof result === 'number') {
                     if (result > 0) {
                         setAllowedApp({ label: `${result}개 앱 선택됨`, packageName: 'ios.family.selection' });
@@ -167,6 +167,22 @@ export const AddScheduleScreen: React.FC = () => {
         const preLockMinutes = (notificationSettings.enabled && notificationSettings.preLockEnabled)
             ? notificationSettings.preLockMinutes
             : 0;
+
+        // Check Permissions before saving
+        const authStatus = await NativeLockControl.checkAuthorization();
+        // For iOS, 2 is Authorized. For Android, we also map 2 to accessibility authorized.
+        const isAuthorized = authStatus === 2;
+
+        if (!isAuthorized) {
+            showAlert({
+                title: "권한 설정 필요",
+                message: "예약 잠금 기능이 정상적으로 동작하려면 '스크린 타임(또는 접근성)'과 '알림' 권한이 모두 허용되어야 합니다. 권한 설정 화면으로 이동하시겠습니까?",
+                confirmText: "이동",
+                cancelText: "취소",
+                onConfirm: () => navigate('Permissions')
+            });
+            return;
+        }
 
         try {
             const preventRemoval = await StorageService.getPreventAppRemoval();

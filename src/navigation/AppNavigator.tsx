@@ -8,6 +8,9 @@ import { LockingScreen } from '../screens/LockingScreen';
 import { AddScheduleScreen } from '../screens/AddScheduleScreen';
 import { AppSelectScreen } from '../screens/AppSelectScreen';
 import { NotificationSettingsScreen } from '../screens/NotificationSettingsScreen';
+import { LoginScreen } from '../screens/LoginScreen';
+import { QRScannerScreen } from '../screens/QRScannerScreen';
+import { QRGeneratorScreen } from '../screens/QRGeneratorScreen';
 import { Colors } from '../theme/Colors';
 import { useAppNavigation } from './NavigationContext';
 
@@ -32,6 +35,12 @@ export const AppNavigator: React.FC = () => {
                 return <AppSelectScreen />;
             case 'NotificationSettings':
                 return <NotificationSettingsScreen />;
+            case 'Login':
+                return <LoginScreen />;
+            case 'QRScanner':
+                return <QRScannerScreen />;
+            case 'QRGenerator':
+                return <QRGeneratorScreen />;
             default:
                 return <DashboardScreen />;
         }

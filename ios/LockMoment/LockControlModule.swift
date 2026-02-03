@@ -45,34 +45,33 @@ class LockControl: NSObject {
   }
 
   @objc(presentFamilyActivityPicker:resolve:rejecter:)
-  func presentFamilyActivityPicker(_ lockType: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+  func presentFamilyActivityPicker(_ lockType: String?, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     if #available(iOS 15.0, *) {
       DispatchQueue.main.async {
-        LockModel.shared.currentType = lockType // Set the target selection type
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootViewController = windowScene.windows.first?.rootViewController else {
-          reject("UI_ERROR", "Could not find root view controller", nil)
+        let type = lockType ?? "app"
+        LockModel.shared.currentType = type
+        
+        guard let window = UIApplication.shared.windows.first(where: { $0.isKeyWindow }),
+              let rootViewController = window.rootViewController else {
+          reject("UI_ERROR", "Could not find key window or root view controller", nil)
           return
         }
         
         var topController = rootViewController
-        while let presented = topController.presentedViewController {
+        while let presented = topController.presentedViewController, !presented.isBeingDismissed {
             topController = presented
         }
         
-        // If we are already presenting a Picker (unlikely but possible), dismiss it? 
-        // Or if the topController IS the QuickLockPicker modal, we present on top of it.
-        
         let pickerView = PickerView {
             topController.dismiss(animated: true) {
-                let sel = lockType == "phone" ? LockModel.shared.phoneSelection : LockModel.shared.appSelection
+                let sel = LockModel.shared.currentType == "phone" ? LockModel.shared.phoneSelection : LockModel.shared.appSelection
                 let count = sel.applicationTokens.count + sel.categoryTokens.count
                 resolve(count)
             }
         }
         let hostingController = UIHostingController(rootView: pickerView)
         hostingController.modalPresentationStyle = .formSheet
-        topController.present(hostingController, animated: true)
+        topController.present(hostingController, animated: true, completion: nil)
       }
     } else {
       reject("OS_VERSION_ERROR", "Requires iOS 15.0+", nil)
@@ -102,6 +101,15 @@ class LockControl: NSObject {
   @objc(openNotificationSettings:rejecter:)
   func openNotificationSettings(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     DispatchQueue.main.async {
+      if #available(iOS 16.0, *) {
+        if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+          UIApplication.shared.open(url, options: [:]) { success in
+            resolve(success)
+          }
+          return
+        }
+      }
+      
       if let url = URL(string: UIApplication.openSettingsURLString) {
         if UIApplication.shared.canOpenURL(url) {
           UIApplication.shared.open(url, options: [:], completionHandler: { success in
@@ -174,12 +182,8 @@ class LockControl: NSObject {
     
     // First cancel any existing notifications for this schedule
     let baseId = "prelock_\(scheduleId)"
-    center.removePendingNotificationRequests(withIdentifiers: days.map { "\(baseId)_\($0)" })
-
-    if preLockMinutes <= 0 {
-      resolve(true)
-      return
-    }
+    let startBaseId = "start_\(scheduleId)"
+    center.removePendingNotificationRequests(withIdentifiers: days.flatMap { ["\(baseId)_\($0)", "\(startBaseId)_\($0)"] })
 
     let timeParts = startTime.split(separator: ":")
     guard timeParts.count == 2,
@@ -189,7 +193,6 @@ class LockControl: NSObject {
       return
     }
 
-    // Days mapping: 월, 화, 수, 목, 금, 토, 일 -> 2, 3, 4, 5, 6, 7, 1 (Calendar.Component.weekday)
     let dayMap: [String: Int] = [
         "일": 1, "월": 2, "화": 3, "수": 4, "목": 5, "금": 6, "토": 7
     ]
@@ -203,13 +206,26 @@ class LockControl: NSObject {
         dateComponents.minute = minute
         dateComponents.second = 0
         
-        // Subtract offset
         let calendar = Calendar.current
-        if let startDate = calendar.date(from: dateComponents),
+        
+        // 1. Schedule Actual Start Notification
+        if let startDate = calendar.date(from: dateComponents) {
+            let startComponents = calendar.dateComponents([.weekday, .hour, .minute, .second], from: startDate)
+            let startContent = UNMutableNotificationContent()
+            startContent.title = "예약 잠금 시작"
+            startContent.body = "'\(name)' 예약 잠금 시간이 되었습니다. 앱을 열어 잠금을 활성화해주세요."
+            startContent.sound = .default
+            
+            let startTrigger = UNCalendarNotificationTrigger(dateMatching: startComponents, repeats: true)
+            let startRequest = UNNotificationRequest(identifier: "\(startBaseId)_\(day)", content: startContent, trigger: startTrigger)
+            center.add(startRequest)
+        }
+        
+        // 2. Schedule Pre-Lock Notification if needed
+        if preLockMinutes > 0, let startDate = calendar.date(from: dateComponents),
            let triggerDate = calendar.date(byAdding: .minute, value: -Int(preLockMinutes), to: startDate) {
             
             let triggerComponents = calendar.dateComponents([.weekday, .hour, .minute, .second], from: triggerDate)
-            
             let content = UNMutableNotificationContent()
             content.title = "잠금 시작 예고"
             content.body = "\(Int(preLockMinutes))분 뒤에 '\(name)'이 시작됩니다."
@@ -217,12 +233,7 @@ class LockControl: NSObject {
             
             let trigger = UNCalendarNotificationTrigger(dateMatching: triggerComponents, repeats: true)
             let request = UNNotificationRequest(identifier: "\(baseId)_\(day)", content: content, trigger: trigger)
-            
-            center.add(request) { error in
-                if let error = error {
-                    print("Failed to schedule notification: \(error.localizedDescription)")
-                }
-            }
+            center.add(request)
         }
     }
     

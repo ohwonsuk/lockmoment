@@ -31,6 +31,17 @@ export const Header: React.FC<Props> = ({ title = "락모먼트", showBack = fal
             <View style={styles.rightIcons}>
                 <TouchableOpacity
                     style={styles.iconButton}
+                    onPress={() => navigate('QRScanner' as any)}
+                >
+                    <Icon
+                        name="qr-code-outline"
+                        size={26}
+                        color={Colors.text}
+                    />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={styles.iconButton}
                     onPress={() => navigate('Permissions')}
                 >
                     <Icon
