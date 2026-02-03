@@ -35,6 +35,16 @@
         android:exported="false"
         android:showOnLockScreen="true"
         android:excludeFromRecents="true" />
+      <activity 
+          android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+          android:exported="true">
+          <intent-filter>
+              <action android:name="android.intent.action.VIEW" />
+              <category android:name="android.intent.category.DEFAULT" />
+              <category android:name="android.intent.category.BROWSABLE" />
+              <data android:host="oauth" android:scheme="kakao5379dc9c59f484c37c785fa2c11fc0bc" />
+          </intent-filter>
+      </activity>
       <service
         android:name=".LockAccessibilityService"
         android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
