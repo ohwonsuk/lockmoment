@@ -9,17 +9,26 @@ import { Icon } from './Icon';
 interface Props {
     title?: string;
     showBack?: boolean;
+    onBack?: () => void;
 }
 
-export const Header: React.FC<Props> = ({ title = "락모먼트", showBack = false }) => {
+export const Header: React.FC<Props> = ({ title = "락모먼트", showBack = false, onBack }) => {
     const insets = useSafeAreaInsets();
     const { navigate, currentScreen } = useAppNavigation();
+
+    const handleBack = () => {
+        if (onBack) {
+            onBack();
+        } else {
+            navigate('Dashboard');
+        }
+    };
 
     return (
         <View style={[styles.container, { paddingTop: insets.top + 10 }]}>
             <View style={styles.leftContainer}>
                 {showBack && (
-                    <TouchableOpacity style={styles.backButton} onPress={() => navigate('Dashboard')}>
+                    <TouchableOpacity style={styles.backButton} onPress={handleBack}>
                         <Icon name="chevron-back" size={28} color={Colors.primary} />
                     </TouchableOpacity>
                 )}

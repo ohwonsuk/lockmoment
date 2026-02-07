@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">락모먼트</string>
     <string name="device_admin_description">잠금 상태에서 앱 삭제를 방지하기 위해 기기 관리자 권한이 필요합니다.</string>
+    <string name="kakao_app_key">5379dc9c59f484c37c785fa2c11fc0bc</string>
 </resources>

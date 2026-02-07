@@ -1,67 +1,130 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, TouchableOpacity, ScrollView, Alert, Share } from 'react-native';
-import QRCode from 'react-native-qrcode-svg';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Header } from '../components/Header';
 import { Icon } from '../components/Icon';
 import { AuthService } from '../services/AuthService';
+import { QrService } from '../services/QrService';
+import { Platform, PermissionsAndroid, TextInput, Modal, FlatList } from 'react-native';
+import ViewShot, { captureRef } from 'react-native-view-shot';
+import { QRCard } from '../components/QRCard';
+import { NativeLockControl } from '../services/NativeLockControl';
+import { UniversalAppMapper } from '../services/UniversalAppMapper';
+import { CameraRoll } from "@react-native-camera-roll/camera-roll";
+import NSSHARE from 'react-native-share';
+
+import { useAppNavigation } from '../navigation/NavigationContext';
 
 export const QRGeneratorScreen: React.FC = () => {
-    const [qrType, setQrType] = useState<'static' | 'dynamic'>('dynamic');
+    const { currentParams } = useAppNavigation();
+    const params = currentParams || {};
+
     const [qrValue, setQrValue] = useState('');
-    const [timeLeft, setTimeLeft] = useState(30);
-    const svgRef = useRef<any>(null);
+    const [lockTitle, setLockTitle] = useState(params.title || '바로 잠금');
+    const [duration, setDuration] = useState(params.duration || 60);
+    const [isAppPickerVisible, setIsAppPickerVisible] = useState(false);
+    const [installedApps, setInstalledApps] = useState<{ label: string, packageName: string }[]>([]);
+    const [selectedApps, setSelectedApps] = useState<string[]>(params.apps || UniversalAppMapper.getDefaultUniversalIds());
+
+    const cardRef = useRef<any>(null);
 
     useEffect(() => {
         generateQR();
-    }, [qrType]);
-
-    useEffect(() => {
-        if (qrType === 'dynamic') {
-            const timer = setInterval(() => {
-                setTimeLeft((prev) => {
-                    if (prev <= 1) {
-                        generateQR();
-                        return 30;
-                    }
-                    return prev - 1;
-                });
-            }, 1000);
-            return () => clearInterval(timer);
-        }
-    }, [qrType]);
+    }, []);
 
     const generateQR = async () => {
-        const deviceData = await AuthService.getDeviceData();
-        const payload = {
-            v: 1,
-            type: qrType === 'dynamic' ? 'DYNAMIC' : 'STATIC',
-            issuer: deviceData.deviceId,
-            ts: Date.now(),
-            nonce: Math.random().toString(36).substring(7)
-        };
-        setQrValue(JSON.stringify(payload));
-        if (qrType === 'dynamic') setTimeLeft(30);
+        try {
+            const qrType = params.type === 'SCHEDULED' ? 'USER_SCHEDULE_LOCK' : 'USER_INSTANT_LOCK';
+            console.log(`[QRGenerator] Generating ${qrType} QR...`);
+            const result = await QrService.generateQr(
+                qrType,
+                duration,
+                lockTitle,
+                selectedApps
+            );
+
+            if (result && result.success) {
+                setQrValue(result.payload || result.qr_id);
+                console.log("[QRGenerator] QR Generated successfully");
+            } else {
+                const deviceData = await AuthService.getDeviceData();
+                const fallbackPayload = {
+                    v: 1,
+                    type: 'DYNAMIC',
+                    title: lockTitle,
+                    duration,
+                    apps: selectedApps,
+                    issuer: deviceData.deviceId,
+                    exp: Math.floor(Date.now() / 1000) + 3600,
+                };
+                setQrValue(JSON.stringify(fallbackPayload));
+                console.warn("[QRGenerator] Backend QR failed, using fallback");
+            }
+        } catch (error) {
+            console.error("[QRGenerator] Failed to generate QR:", error);
+        }
     };
 
-    const handleDownload = () => {
-        if (svgRef.current) {
-            svgRef.current.toDataURL((data: string) => {
-                // In a real app, use react-native-fs or CameraRoll to save
-                console.log("QR Data URL generated");
-                Alert.alert("다운로드", "QR 코드가 갤러리에 저장되었습니다. (인쇄용)");
-            });
+    const handleSelectApps = async () => {
+        try {
+            // Get all universal mappings
+            const universalApps = UniversalAppMapper.getDefaultUniversalIds();
+            const initialList = universalApps.map(id => ({ label: id.charAt(0).toUpperCase() + id.slice(1), packageName: id, isUniversal: true }));
+
+            if (Platform.OS === 'android') {
+                const apps = await NativeLockControl.getInstalledApps();
+                // Merge or filter? Let's show all.
+                const combined = [
+                    ...initialList,
+                    ...apps.filter(app => !universalApps.includes(UniversalAppMapper.mapToUniversal(app.packageName, 'android')))
+                ];
+                setInstalledApps(combined);
+            } else {
+                setInstalledApps(initialList);
+            }
+            setIsAppPickerVisible(true);
+        } catch (e) {
+            console.error("App Selection Error:", e);
+        }
+    };
+
+    const toggleApp = (packageName: string) => {
+        setSelectedApps(prev =>
+            prev.includes(packageName)
+                ? prev.filter(p => p !== packageName)
+                : [...prev, packageName]
+        );
+    };
+
+    const handleDownload = async () => {
+        if (!cardRef.current) return;
+        try {
+            const uri = await captureRef(cardRef, { format: "png", quality: 0.8 });
+            if (Platform.OS === 'android') {
+                const permission = PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE;
+                const status = await PermissionsAndroid.request(permission);
+                if (status !== 'granted') return;
+            }
+            await CameraRoll.save(uri, { type: 'photo' });
+            Alert.alert("저장 완료", "QR 코드가 갤러리에 저장되었습니다.");
+        } catch (error) {
+            console.error("Download Error:", error);
         }
     };
 
     const handleShare = async () => {
+        if (!cardRef.current) return;
         try {
-            await Share.share({
-                message: `락모먼트 집중 모드 참여를 위한 QR 코드입니다: ${qrValue}`,
+            const uri = await captureRef(cardRef, { format: "png", quality: 0.8 });
+            await NSSHARE.open({
+                title: 'QR 코드 공유',
+                url: uri,
+                type: 'image/png',
+                message: `락모먼트 집중 모드 참여를 위한 QR 코드입니다: ${lockTitle}`,
             });
         } catch (error) {
-            console.error(error);
+            console.error("Share Error:", error);
         }
     };
 
@@ -69,70 +132,96 @@ export const QRGeneratorScreen: React.FC = () => {
         <View style={styles.container}>
             <Header title="QR 생성" showBack />
             <ScrollView contentContainerStyle={styles.scrollContent}>
-                <View style={styles.typeSelector}>
-                    <TouchableOpacity
-                        style={[styles.typeButton, qrType === 'dynamic' && styles.typeButtonActive]}
-                        onPress={() => setQrType('dynamic')}
-                    >
-                        <Typography bold color={qrType === 'dynamic' ? '#FFF' : Colors.textSecondary}>갱신형 (Dynamic)</Typography>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                        style={[styles.typeButton, qrType === 'static' && styles.typeButtonActive]}
-                        onPress={() => setQrType('static')}
-                    >
-                        <Typography bold color={qrType === 'static' ? '#FFF' : Colors.textSecondary}>고정형 (Static)</Typography>
+                <View style={styles.configContainer}>
+                    <View style={styles.inputGroup}>
+                        <Typography variant="caption" color={Colors.textSecondary} style={{ marginBottom: 8 }}>잠금 제목</Typography>
+                        <TextInput
+                            style={styles.textInput}
+                            value={lockTitle}
+                            onChangeText={setLockTitle}
+                            placeholder="예: 영어 단어 암기"
+                            placeholderTextColor={Colors.statusInactive}
+                        />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                        <Typography variant="caption" color={Colors.textSecondary} style={{ marginBottom: 8 }}>잠금 시간 (분)</Typography>
+                        <TextInput
+                            style={styles.textInput}
+                            value={duration.toString()}
+                            onChangeText={(val) => setDuration(parseInt(val) || 0)}
+                            keyboardType="numeric"
+                            placeholder="60"
+                            placeholderTextColor={Colors.statusInactive}
+                        />
+                    </View>
+
+                    <TouchableOpacity style={styles.appPickerButton} onPress={handleSelectApps}>
+                        <Icon name="apps-outline" size={20} color={Colors.primary} />
+                        <Typography color={Colors.primary} bold>
+                            {selectedApps.length > 0 ? `${selectedApps.length}개의 앱 선택됨` : "잠글 앱 선택하기"}
+                        </Typography>
                     </TouchableOpacity>
                 </View>
 
                 <View style={styles.qrContainer}>
-                    <View style={styles.qrCard}>
-                        {qrValue ? (
-                            <QRCode
-                                value={qrValue}
-                                size={200}
-                                color={Colors.text}
-                                backgroundColor="transparent"
-                                getRef={(c) => (svgRef.current = c)}
-                            />
-                        ) : (
-                            <Icon name="qr-code" size={180} color={Colors.textSecondary} />
-                        )}
-
-                        {qrType === 'dynamic' && (
-                            <View style={styles.timerBadge}>
-                                <Typography variant="caption" bold color={Colors.primary}>{timeLeft}s 남음</Typography>
-                            </View>
-                        )}
-                    </View>
+                    <ViewShot ref={cardRef} options={{ format: 'png', quality: 0.9 }}>
+                        <QRCard
+                            title={lockTitle || '바로 잠금'}
+                            subtitle={`${duration}분 집중 모드`}
+                            value={qrValue || 'pending'}
+                        />
+                    </ViewShot>
                     <Typography color={Colors.textSecondary} style={styles.qrHint}>
-                        {qrType === 'dynamic'
-                            ? "30초마다 보안 코드가 갱신됩니다"
-                            : "인쇄하여 교실에 부착할 수 있는 고정 코드입니다"}
+                        상단의 정보를 수정한 후 아래 'QR 생성/갱신' 버튼을 누르세요
                     </Typography>
                 </View>
 
                 <View style={styles.actionContainer}>
-                    {qrType === 'static' && (
-                        <TouchableOpacity style={styles.downloadButton} onPress={handleDownload}>
-                            <Icon name="download-outline" size={20} color={Colors.text} />
-                            <Typography bold>이미지 다운로드</Typography>
-                        </TouchableOpacity>
-                    )}
+                    <TouchableOpacity style={styles.generateButton} onPress={generateQR}>
+                        <Icon name="refresh-outline" size={20} color="#FFF" />
+                        <Typography bold color="#FFF">QR 생성/갱신</Typography>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.downloadButton} onPress={handleDownload}>
+                        <Icon name="download-outline" size={20} color={Colors.text} />
+                        <Typography bold>이미지 다운로드</Typography>
+                    </TouchableOpacity>
 
                     <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
                         <Icon name="share-outline" size={20} color="#FFF" />
                         <Typography bold color="#FFF">공유하기</Typography>
                     </TouchableOpacity>
                 </View>
-
-                <View style={styles.infoCard}>
-                    <Typography bold style={{ marginBottom: 10 }}>💡 도움말</Typography>
-                    <Typography variant="caption" color={Colors.textSecondary} style={{ lineHeight: 18 }}>
-                        • 갱신형 QR은 보안이 강화되어 현장 스캔에 적합합니다.{"\n"}
-                        • 고정형 QR은 인쇄하여 부착해두면 학생들이 언제든 스캔하여 집중 모드를 시작할 수 있습니다.
-                    </Typography>
-                </View>
             </ScrollView>
+
+            <Modal visible={isAppPickerVisible} animationType="slide">
+                <View style={styles.modalContainer}>
+                    <Header title="앱 선택" showBack onBack={() => setIsAppPickerVisible(false)} />
+                    <FlatList
+                        data={installedApps}
+                        keyExtractor={(item) => item.packageName}
+                        renderItem={({ item }) => (
+                            <TouchableOpacity
+                                style={styles.appItem}
+                                onPress={() => toggleApp(item.packageName)}
+                            >
+                                <View style={[styles.checkbox, selectedApps.includes(item.packageName) && styles.checkboxActive]}>
+                                    {selectedApps.includes(item.packageName) && <Icon name="checkmark" size={16} color="#FFF" />}
+                                </View>
+                                <Typography style={styles.appLabel}>{item.label}</Typography>
+                            </TouchableOpacity>
+                        )}
+                        contentContainerStyle={{ padding: 20 }}
+                    />
+                    <TouchableOpacity
+                        style={styles.modalConfirmButton}
+                        onPress={() => setIsAppPickerVisible(false)}
+                    >
+                        <Typography bold color="#FFF">확인</Typography>
+                    </TouchableOpacity>
+                </View>
+            </Modal>
         </View>
     );
 };
@@ -146,60 +235,50 @@ const styles = StyleSheet.create({
         padding: 20,
         alignItems: 'center',
     },
-    typeSelector: {
-        flexDirection: 'row',
-        backgroundColor: Colors.card,
-        borderRadius: 12,
-        padding: 4,
+    configContainer: {
         width: '100%',
-        marginBottom: 30,
+        backgroundColor: Colors.card,
+        padding: 16,
+        borderRadius: 16,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: Colors.border,
     },
-    typeButton: {
-        flex: 1,
-        paddingVertical: 12,
-        alignItems: 'center',
+    inputGroup: {
+        marginBottom: 16,
+    },
+    textInput: {
+        backgroundColor: Colors.background,
         borderRadius: 8,
+        padding: 12,
+        color: Colors.text,
+        fontSize: 16,
+        borderWidth: 1,
+        borderColor: Colors.border,
     },
-    typeButtonActive: {
-        backgroundColor: Colors.primary,
+    appPickerButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingVertical: 8,
     },
     qrContainer: {
         alignItems: 'center',
-        marginBottom: 40,
+        marginBottom: 30,
     },
-    qrCard: {
-        width: 280,
-        height: 280,
-        backgroundColor: '#FFF',
-        borderRadius: 24,
+    generateButton: {
+        flexDirection: 'row',
+        backgroundColor: Colors.primary,
+        paddingVertical: 16,
+        borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: Colors.border,
-        position: 'relative',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 10,
-        elevation: 5,
-    },
-    qrPlaceholder: {
-        width: 200,
-        height: 200,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    timerBadge: {
-        position: 'absolute',
-        bottom: 15,
-        backgroundColor: Colors.primary + '20',
-        paddingHorizontal: 12,
-        paddingVertical: 4,
-        borderRadius: 10,
+        gap: 10,
     },
     qrHint: {
         marginTop: 20,
         fontSize: 14,
+        textAlign: 'center',
     },
     actionContainer: {
         width: '100%',
@@ -219,19 +298,47 @@ const styles = StyleSheet.create({
     },
     shareButton: {
         flexDirection: 'row',
-        backgroundColor: Colors.primary,
+        backgroundColor: Colors.card,
         paddingVertical: 16,
         borderRadius: 12,
         justifyContent: 'center',
         alignItems: 'center',
         gap: 10,
-    },
-    infoCard: {
-        width: '100%',
-        backgroundColor: Colors.card,
-        padding: 20,
-        borderRadius: 16,
         borderWidth: 1,
         borderColor: Colors.border,
     },
+    modalContainer: {
+        flex: 1,
+        backgroundColor: Colors.background,
+    },
+    appItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.border,
+        gap: 12,
+    },
+    checkbox: {
+        width: 24,
+        height: 24,
+        borderRadius: 6,
+        borderWidth: 2,
+        borderColor: Colors.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    checkboxActive: {
+        backgroundColor: Colors.primary,
+    },
+    appLabel: {
+        fontSize: 16,
+    },
+    modalConfirmButton: {
+        backgroundColor: Colors.primary,
+        margin: 20,
+        paddingVertical: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+    }
 });

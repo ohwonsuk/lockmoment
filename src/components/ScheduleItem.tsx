@@ -16,9 +16,10 @@ interface Props {
     schedule: Schedule;
     onPress?: () => void;
     onToggle?: (id: string) => void;
+    onGenerateQR?: (id: string) => void;
 }
 
-export const ScheduleItem: React.FC<Props> = ({ schedule, onPress, onToggle }) => {
+export const ScheduleItem: React.FC<Props> = ({ schedule, onPress, onToggle, onGenerateQR }) => {
     return (
         <TouchableOpacity
             style={styles.container}
@@ -28,6 +29,14 @@ export const ScheduleItem: React.FC<Props> = ({ schedule, onPress, onToggle }) =
             <View style={styles.header}>
                 <Typography variant="h2" bold>{schedule.name}</Typography>
                 <View style={styles.headerRight}>
+                    {onGenerateQR && (
+                        <TouchableOpacity
+                            onPress={() => onGenerateQR(schedule.id)}
+                            style={styles.qrIcon}
+                        >
+                            <Icon name="qr-code" size={20} color={Colors.primary} />
+                        </TouchableOpacity>
+                    )}
                     <Switch
                         value={schedule.isActive}
                         onValueChange={() => onToggle?.(schedule.id)}
@@ -71,6 +80,10 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
+    },
+    qrIcon: {
+        marginRight: 8,
+        padding: 4,
     },
     switch: {
         transform: [{ scaleX: 0.9 }, { scaleY: 0.9 }],

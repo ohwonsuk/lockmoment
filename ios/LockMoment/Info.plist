@@ -86,7 +86,7 @@
 		<key>CFBundleURLSchemes</key>
 		<array>
 		<!-- [IMPORTANT] kakao{NATIVE_APP_KEY} 형식으로 입력하세요 -->
-		<string>5379dc9c59f484c37c785fa2c11fc0bc</string>
+		<string>kakao5379dc9c59f484c37c785fa2c11fc0bc</string>
 		</array>
 	</dict>
 	</array>
@@ -96,8 +96,14 @@
 	<string>kakaolink</string>
 	<string>kakaoplus</string>
 	</array>
+	<key>KAKAO_APP_KEY</key>
+	<string>5379dc9c59f484c37c785fa2c11fc0bc</string>
 	<key>NSCameraUsageDescription</key>
 	<string>QR 코드 스캔을 위해 카메라 권한이 필요합니다.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>QR 코드를 갤러리에 저장하기 위해 사진 라이브러리 접근 권한이 필요합니다.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>QR 코드를 갤러리에 저장하기 위해 사진 라이브러리 접근 권한이 필요합니다.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 	<key>NSAllowsArbitraryLoads</key>

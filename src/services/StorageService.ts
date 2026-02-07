@@ -7,10 +7,7 @@ export interface Schedule {
     endTime: string;   // HH:mm
     days: string[];
     lockType: string;
-    allowedApp?: {
-        label: string;
-        packageName: string;
-    };
+    lockedApps?: string[];
     isActive: boolean;
 }
 
@@ -130,6 +127,64 @@ export const StorageService = {
             await AsyncStorage.setItem('@lockmoment_notification_settings', JSON.stringify(settings));
         } catch (e) {
             console.error('Failed to save notification settings', e);
+        }
+    },
+
+    // Auth Token Management
+    async getAccessToken(): Promise<string | null> {
+        try {
+            return await AsyncStorage.getItem('@lockmoment_access_token');
+        } catch (e) {
+            return null;
+        }
+    },
+
+    async setAccessToken(token: string): Promise<void> {
+        try {
+            await AsyncStorage.setItem('@lockmoment_access_token', token);
+        } catch (e) {
+            console.error('Failed to save access token', e);
+        }
+    },
+
+    async getRefreshToken(): Promise<string | null> {
+        try {
+            return await AsyncStorage.getItem('@lockmoment_refresh_token');
+        } catch (e) {
+            return null;
+        }
+    },
+
+    async setRefreshToken(token: string): Promise<void> {
+        try {
+            await AsyncStorage.setItem('@lockmoment_refresh_token', token);
+        } catch (e) {
+            console.error('Failed to save refresh token', e);
+        }
+    },
+
+    async clearTokens(): Promise<void> {
+        try {
+            await AsyncStorage.multiRemove(['@lockmoment_access_token', '@lockmoment_refresh_token', '@lockmoment_user_role']);
+        } catch (e) {
+            console.error('Failed to clear tokens', e);
+        }
+    },
+
+    // User Role Management
+    async getUserRole(): Promise<string | null> {
+        try {
+            return await AsyncStorage.getItem('@lockmoment_user_role');
+        } catch (e) {
+            return null;
+        }
+    },
+
+    async setUserRole(role: string): Promise<void> {
+        try {
+            await AsyncStorage.setItem('@lockmoment_user_role', role);
+        } catch (e) {
+            console.error('Failed to save user role', e);
         }
     }
 };

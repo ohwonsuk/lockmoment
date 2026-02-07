@@ -173,7 +173,7 @@ object ScheduleAlarmManager {
             val endTime = schedule.getString("endTime")
             val lockType = schedule.getString("lockType")
             val name = schedule.optString("name", "예약 잠금")
-            val allowedPackage = schedule.optString("allowedPackage", null)
+            val allowedPackage = if (schedule.isNull("allowedPackage")) null else schedule.optString("allowedPackage", null as String?)
             val daysArray = schedule.getJSONArray("days")
             val days = List(daysArray.length()) { daysArray.getString(it) }
             val preventAppRemoval = schedule.optBoolean("preventAppRemoval", false)

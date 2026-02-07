@@ -8,6 +8,7 @@
 #import <React/RCTBundleURLProvider.h>
 #import <React/RCTConvert.h>
 #import <React/RCTEventEmitter.h>
+#import <React/RCTLinkingManager.h>
 #import <React/RCTRootView.h>
 #import <React/RCTUtils.h>
 #import <React/RCTViewManager.h>

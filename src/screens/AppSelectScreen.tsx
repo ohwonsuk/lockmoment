@@ -48,7 +48,7 @@ export const AppSelectScreen: React.FC = () => {
                 <TouchableOpacity onPress={() => navigate('AddSchedule')} style={styles.headerButton}>
                     <Icon name="chevron-back" size={28} />
                 </TouchableOpacity>
-                <Typography variant="h2" bold>허용할 앱 선택</Typography>
+                <Typography variant="h2" bold>잠금 앱 선택</Typography>
                 <View style={{ width: 40 }} />
             </View>
 

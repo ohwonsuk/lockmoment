@@ -10,13 +10,23 @@ export const LoginScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
     const [isLoading, setIsLoading] = useState(false);
 
-    const handleKakaoLogin = async () => {
+    const handleKakaoLogin = async (role: 'PARENT' | 'TEACHER' = 'PARENT') => {
+        console.log(`[LoginScreen] Kakao Login button pressed (role: ${role})`);
         setIsLoading(true);
-        const user = await AuthService.loginWithKakao();
+        const user = await AuthService.loginWithKakao(role);
+        console.log("[LoginScreen] Kakao Login finished, user:", user ? "Success" : "Failed");
         setIsLoading(false);
         if (user) {
             navigate('Dashboard');
         }
+    };
+
+    const handleGuestLogin = async () => {
+        setIsLoading(true);
+        // Register device as 'Student' (Anonymous)
+        await AuthService.syncDevice();
+        setIsLoading(false);
+        navigate('Dashboard');
     };
 
     return (
@@ -31,9 +41,29 @@ export const LoginScreen: React.FC = () => {
                 </View>
 
                 <View style={styles.buttonContainer}>
+                    <Typography variant="caption" color={Colors.textSecondary} style={{ textAlign: 'center' }}>
+                        테스트용 역할 선택 (디버깅)
+                    </Typography>
+                    <View style={styles.roleButtons}>
+                        <TouchableOpacity
+                            style={[styles.smallButton, { backgroundColor: Colors.primary }]}
+                            onPress={() => handleKakaoLogin('PARENT')}
+                            disabled={isLoading}
+                        >
+                            <Typography color="#FFF">부모 로그인</Typography>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.smallButton, { backgroundColor: '#FF9500' }]}
+                            onPress={() => handleKakaoLogin('TEACHER')}
+                            disabled={isLoading}
+                        >
+                            <Typography color="#FFF">교사 로그인</Typography>
+                        </TouchableOpacity>
+                    </View>
+
                     <TouchableOpacity
                         style={styles.kakaoButton}
-                        onPress={handleKakaoLogin}
+                        onPress={() => handleKakaoLogin('PARENT')}
                         disabled={isLoading}
                     >
                         <Icon name="chatbubble" size={20} color="#000000" />
@@ -44,15 +74,23 @@ export const LoginScreen: React.FC = () => {
 
                     <TouchableOpacity
                         style={styles.guestButton}
-                        onPress={() => navigate('Dashboard')}
+                        onPress={handleGuestLogin}
+                        disabled={isLoading}
                     >
-                        <Typography color={Colors.textSecondary}>게스트로 둘러보기</Typography>
+                        <Typography color={Colors.textSecondary}>게스트로 시작하기</Typography>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.smallButton, { backgroundColor: '#34C759', marginTop: 10 }]}
+                        onPress={() => navigate('Join')}
+                    >
+                        <Typography color="#FFF">회원가입 화면 미리보기 (심사용)</Typography>
                     </TouchableOpacity>
                 </View>
 
                 <Typography variant="caption" color={Colors.textSecondary} style={styles.infoText}>
                     로그인 시 이용약관 및 개인정보 처리방침에 동의하게 됩니다.
-                    AS 대응을 위해 플랫폼, OS버전, 기기정보가 수집됩니다.
+                    서비스 오류 대응을 위해 플랫폼, OS버전, 기기정보가 수집됩니다.
                 </Typography>
             </View>
         </View>
@@ -97,6 +135,17 @@ const styles = StyleSheet.create({
     },
     guestButton: {
         paddingVertical: 16,
+        alignItems: 'center',
+    },
+    roleButtons: {
+        flexDirection: 'row',
+        gap: 10,
+        marginBottom: 10,
+    },
+    smallButton: {
+        flex: 1,
+        paddingVertical: 12,
+        borderRadius: 10,
         alignItems: 'center',
     },
     infoText: {

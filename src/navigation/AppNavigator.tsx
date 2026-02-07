@@ -11,6 +11,8 @@ import { NotificationSettingsScreen } from '../screens/NotificationSettingsScree
 import { LoginScreen } from '../screens/LoginScreen';
 import { QRScannerScreen } from '../screens/QRScannerScreen';
 import { QRGeneratorScreen } from '../screens/QRGeneratorScreen';
+import { TeacherClassScreen } from '../screens/TeacherClassScreen';
+import { JoinScreen } from '../screens/JoinScreen';
 import { Colors } from '../theme/Colors';
 import { useAppNavigation } from './NavigationContext';
 
@@ -41,6 +43,10 @@ export const AppNavigator: React.FC = () => {
                 return <QRScannerScreen />;
             case 'QRGenerator':
                 return <QRGeneratorScreen />;
+            case 'TeacherClass':
+                return <TeacherClassScreen />;
+            case 'Join':
+                return <JoinScreen />;
             default:
                 return <DashboardScreen />;
         }

@@ -9,11 +9,12 @@ interface Props {
     schedules: Schedule[];
     onToggle: (id: string) => void;
     onPressItem: (id: string) => void;
+    onGenerateQR?: (id: string) => void;
 }
 
 const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 
-export const WeeklySchedule: React.FC<Props> = ({ schedules, onToggle, onPressItem }) => {
+export const WeeklySchedule: React.FC<Props> = ({ schedules, onToggle, onPressItem, onGenerateQR }) => {
     const [selectedDay, setSelectedDay] = useState<string>(DAYS[new Date().getDay()]);
 
     const filteredSchedules = schedules.filter(s => s.days.includes(selectedDay));
@@ -61,6 +62,7 @@ export const WeeklySchedule: React.FC<Props> = ({ schedules, onToggle, onPressIt
                                 }}
                                 onPress={() => onPressItem(item.id)}
                                 onToggle={onToggle}
+                                onGenerateQR={onGenerateQR}
                             />
                         </View>
                     ))

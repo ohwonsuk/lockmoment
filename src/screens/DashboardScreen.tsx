@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Platform, Linking } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import { Colors } from '../theme/Colors';
 import { Header } from '../components/Header';
 import { QuickLockCard } from '../components/QuickLockCard';
-import { ScheduleItem } from '../components/ScheduleItem';
 import { Typography } from '../components/Typography';
 import { NativeLockControl } from '../services/NativeLockControl';
 import { useAppNavigation } from '../navigation/NavigationContext';
@@ -12,6 +11,7 @@ import { Icon } from '../components/Icon';
 import { StorageService, Schedule } from '../services/StorageService';
 import { useAlert } from '../context/AlertContext';
 import { WeeklySchedule } from '../components/WeeklySchedule';
+import { AuthService } from '../services/AuthService';
 
 export const DashboardScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
@@ -22,46 +22,36 @@ export const DashboardScreen: React.FC = () => {
     const [hasPermission, setHasPermission] = useState(false);
     const [isPickerVisible, setIsPickerVisible] = useState(false);
     const [schedules, setSchedules] = useState<Schedule[]>([]);
+    const [userRole, setUserRole] = useState<string>('STUDENT');
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     useEffect(() => {
+        loadUserRole();
         refreshAll();
         restoreLock();
-
-        // Polling timer to catch background locks (like scheduled ones)
-        // and update high-frequency countdown when locked
         timerRef.current = setInterval(updateStatus, 1000);
-
         return () => {
             if (timerRef.current) clearInterval(timerRef.current);
         };
-    }, [navigate]);
+    }, []);
+
+    const loadUserRole = async () => {
+        const role = await StorageService.getUserRole();
+        if (role) setUserRole(role);
+    };
 
     const updateStatus = async () => {
         try {
             const locked = await NativeLockControl.isLocked();
             setIsLocked(locked);
-
             if (locked) {
                 const remaining = await NativeLockControl.getRemainingTime();
                 setRemainingTime(remaining);
-
-                // Calculate end time date object
-                const now = new Date();
-                // Avoid constant recalculation if remaining is stable, but remaining changes every second.
-                // Better to set it ONCE when lock starts or restores, but here we only have remaining.
-                // We can approximate: Date.now() + remaining.
-                setEndTimeDate(new Date(now.getTime() + remaining));
-
+                setEndTimeDate(new Date(Date.now() + remaining));
                 if (remaining <= 0) {
                     await NativeLockControl.stopLock();
                     setIsLocked(false);
-                    setRemainingTime(0);
-                    setEndTimeDate(null);
                 }
-            } else {
-                setRemainingTime(0);
-                setEndTimeDate(null);
             }
         } catch (error) {
             console.error('Failed to update status:', error);
@@ -92,9 +82,11 @@ export const DashboardScreen: React.FC = () => {
         if (Platform.OS === 'android') {
             const perm = await NativeLockControl.checkAccessibilityPermission();
             setHasPermission(perm);
+            AuthService.syncPermissions({ accessibility: perm });
         } else {
             const authStatus = await NativeLockControl.checkAuthorization();
             setHasPermission(authStatus === 2);
+            AuthService.syncPermissions({ screenTime: authStatus === 2 });
         }
     };
 
@@ -112,7 +104,7 @@ export const DashboardScreen: React.FC = () => {
             const prevent = await StorageService.getPreventAppRemoval();
             const durationMs = (h * 3600 + m * 60) * 1000;
             await NativeLockControl.startLock(durationMs, type, "바로 잠금", packagesJson, prevent);
-            updateStatus(); // Immediate feedback
+            updateStatus();
         } catch (error: any) {
             showAlert({ title: "오류", message: error.message });
         }
@@ -131,61 +123,68 @@ export const DashboardScreen: React.FC = () => {
         });
     };
 
-    const formatTime = (ms: number) => {
-        const totalSec = Math.ceil(ms / 1000);
-        const h = Math.floor(totalSec / 3600);
-        const m = Math.floor((totalSec % 3600) / 60);
-        const s = totalSec % 60;
-        return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    };
-
-    const formatEndTime = (date: Date) => {
-        const month = date.getMonth() + 1;
-        const d = date.getDate();
-        const days = ['일', '월', '화', '수', '목', '금', '토'];
-        const day = days[date.getDay()];
-        const h = date.getHours();
-        const m = date.getMinutes().toString().padStart(2, '0');
-        return `종료예정 ${month}/${d}(${day}) ${h}:${m}`;
-    };
-
     const handleToggleSchedule = async (id: string) => {
         const schedule = schedules.find(s => s.id === id);
-        if (schedule && schedule.isActive) {
-            try {
+        if (schedule) {
+            if (schedule.isActive) {
                 await NativeLockControl.cancelAlarm(id);
-            } catch (error) {
-                console.error('Failed to cancel alarm:', error);
-            }
-        } else if (schedule && !schedule.isActive) {
-            try {
+            } else {
                 const prevent = await StorageService.getPreventAppRemoval();
                 await NativeLockControl.scheduleAlarm(
-                    id,
-                    schedule.startTime,
-                    schedule.endTime,
-                    schedule.days,
-                    schedule.lockType || 'app',
-                    schedule.name,
-                    schedule.allowedApp?.packageName,
-                    prevent
+                    id, schedule.startTime, schedule.endTime, schedule.days,
+                    schedule.lockType || 'app', schedule.name,
+                    JSON.stringify(schedule.lockedApps || []), prevent
                 );
-            } catch (error) {
-                console.error('Failed to schedule alarm:', error);
             }
+            await StorageService.toggleScheduleActivity(id);
+            loadSchedules();
         }
-
-        await StorageService.toggleScheduleActivity(id);
-        loadSchedules();
     };
 
-    const handleOpenDialer = async () => {
-        await NativeLockControl.openDefaultDialer();
+    const handleGenerateScheduleQR = (id: string) => {
+        (globalThis as any).editingScheduleId = id;
+        navigate('AddSchedule' as any, { showQR: true });
     };
 
-    const handleOpenMessages = async () => {
-        await NativeLockControl.openDefaultMessages();
+    const formatTime = (ms: number) => {
+        const totalSec = Math.ceil(ms / 1000);
+        const h = Math.floor(totalSec / 3600).toString().padStart(2, '0');
+        const m = Math.floor((totalSec % 3600) / 60).toString().padStart(2, '0');
+        const s = (totalSec % 60).toString().padStart(2, '0');
+        return `${h}:${m}:${s}`;
     };
+
+    // Helper for Teacher/Parent Dashboards
+    const renderTeacherDashboard = () => (
+        <View style={styles.container}>
+            <Header title="교사 대시보드" />
+            <ScrollView style={styles.flex1} contentContainerStyle={styles.scrollContent}>
+                <View style={styles.sectionHeader}>
+                    <Typography variant="h2" bold>나의 수업</Typography>
+                    <TouchableOpacity style={styles.addButton} onPress={() => navigate('TeacherClass' as any)}>
+                        <Icon name="add" size={16} color={Colors.primary} />
+                        <Typography color={Colors.primary} bold style={styles.addButtonText}>수업 생성</Typography>
+                    </TouchableOpacity>
+                </View>
+                <View style={styles.emptyState}>
+                    <Typography color={Colors.textSecondary}>등록된 수업이 없습니다.</Typography>
+                </View>
+                <View style={[styles.qrActions, { marginTop: 20 }]}>
+                    <TouchableOpacity style={styles.qrActionButton} onPress={() => navigate('QRGenerator' as any)}>
+                        <View style={[styles.qrIconBadge, { backgroundColor: '#EC489920' }]}>
+                            <Icon name="qr-code" size={24} color="#F472B6" />
+                        </View>
+                        <Typography variant="caption" bold>출석 QR 생성</Typography>
+                    </TouchableOpacity>
+                </View>
+                <TouchableOpacity style={styles.footer} onPress={() => setUserRole('STUDENT')}>
+                    <Typography color={Colors.textSecondary} variant="caption">학생 모드로 전환 (테스트용)</Typography>
+                </TouchableOpacity>
+            </ScrollView>
+        </View>
+    );
+
+    if (userRole === 'TEACHER') return renderTeacherDashboard();
 
     return (
         <View style={styles.container}>
@@ -206,47 +205,24 @@ export const DashboardScreen: React.FC = () => {
                                 <Typography variant="caption" color={Colors.textSecondary}>관리자 종료</Typography>
                             </TouchableOpacity>
                         </View>
-
                         <Typography style={styles.remainingTimeText}>{formatTime(remainingTime)}</Typography>
-
                         {endTimeDate && (
                             <Typography variant="caption" color={Colors.textSecondary} style={{ marginTop: -10, marginBottom: 30 }}>
-                                {formatEndTime(endTimeDate)}
+                                종료예정 {endTimeDate.getHours()}:{endTimeDate.getMinutes().toString().padStart(2, '0')}
                             </Typography>
-                        )}
-
-                        {Platform.OS !== 'ios' && (
-                            <View style={styles.emergencyActions}>
-                                <TouchableOpacity style={styles.emergencyButton} onPress={handleOpenDialer}>
-                                    <Icon name="call" size={20} color={Colors.text} />
-                                    <Typography variant="caption" bold>전화</Typography>
-                                </TouchableOpacity>
-                                <TouchableOpacity style={styles.emergencyButton} onPress={handleOpenMessages}>
-                                    <Icon name="chatbubble" size={20} color={Colors.text} />
-                                    <Typography variant="caption" bold>메시지</Typography>
-                                </TouchableOpacity>
-                            </View>
                         )}
                     </View>
                 ) : (
                     <>
                         <QuickLockCard onPress={handleQuickLock} />
-
                         <View style={styles.qrActions}>
-                            <TouchableOpacity
-                                style={styles.qrActionButton}
-                                onPress={() => navigate('QRScanner' as any)}
-                            >
+                            <TouchableOpacity style={styles.qrActionButton} onPress={() => navigate('QRScanner' as any)}>
                                 <View style={[styles.qrIconBadge, { backgroundColor: '#4F46E520' }]}>
                                     <Icon name="scan" size={24} color="#6366F1" />
                                 </View>
                                 <Typography variant="caption" bold>QR 스캔 잠금</Typography>
                             </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={styles.qrActionButton}
-                                onPress={() => navigate('QRGenerator' as any)}
-                            >
+                            <TouchableOpacity style={styles.qrActionButton} onPress={() => navigate('QRGenerator' as any)}>
                                 <View style={[styles.qrIconBadge, { backgroundColor: '#EC489920' }]}>
                                     <Icon name="qr-code" size={24} color="#F472B6" />
                                 </View>
@@ -268,10 +244,8 @@ export const DashboardScreen: React.FC = () => {
                         (globalThis as any).editingScheduleId = null;
                         navigate('AddSchedule');
                     }}>
-                        <View style={styles.addButtonContent}>
-                            <Icon name="add" size={16} color={Colors.primary} />
-                            <Typography color={Colors.primary} bold style={styles.addButtonText}>예약 추가</Typography>
-                        </View>
+                        <Icon name="add" size={16} color={Colors.primary} />
+                        <Typography color={Colors.primary} bold style={styles.addButtonText}>예약 추가</Typography>
                     </TouchableOpacity>
                 </View>
 
@@ -282,6 +256,7 @@ export const DashboardScreen: React.FC = () => {
                         navigate('AddSchedule');
                     }}
                     onToggle={handleToggleSchedule}
+                    onGenerateQR={handleGenerateScheduleQR}
                 />
 
                 <View style={styles.footer}>
@@ -340,25 +315,7 @@ const styles = StyleSheet.create({
         fontSize: 48,
         fontWeight: 'bold',
         color: Colors.text,
-        fontVariant: ['tabular-nums'],
         marginBottom: 24,
-    },
-    emergencyActions: {
-        flexDirection: 'row',
-        gap: 12,
-        width: '100%',
-    },
-    emergencyButton: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: Colors.background,
-        paddingVertical: 12,
-        borderRadius: 12,
-        gap: 8,
-        borderWidth: 1,
-        borderColor: Colors.border,
     },
     sectionHeader: {
         flexDirection: 'row',
@@ -369,14 +326,12 @@ const styles = StyleSheet.create({
         marginBottom: 10,
     },
     addButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: '#1E293B',
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 8,
-    },
-    addButtonContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
         gap: 4,
     },
     addButtonText: {

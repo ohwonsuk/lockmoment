@@ -1,6 +1,8 @@
 import { Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 import { login, getProfile } from '@react-native-seoul/kakao-login';
+import { apiService } from './ApiService';
+import { StorageService } from './StorageService';
 
 export interface UserInfo {
     id: string;
@@ -32,15 +34,48 @@ export class AuthService {
     /**
      * Kakao Login logic
      */
-    static async loginWithKakao(): Promise<UserInfo | null> {
+    static async loginWithKakao(role: 'PARENT' | 'TEACHER' = 'PARENT'): Promise<UserInfo | null> {
         try {
-            await login();
-            const profile = await getProfile();
+            console.log("[AuthService] Starting Kakao Login...");
+            const token = await login();
+            console.log("[AuthService] Kakao Login Success, token received");
 
-            // Validate mandatory fields (Phone number is required for AS support)
+            console.log("[AuthService] Fetching Kakao Profile...");
+            const profile = await getProfile();
+            console.log("[AuthService] Kakao Profile fetched:", JSON.stringify(profile, null, 2));
+
+            // 1. Authenticate with Backend
+            console.log(`[AuthService] Calling Backend Auth (/auth/kakao) with role: ${role}`);
+            try {
+                const response = await apiService.post<{ accessToken: string; refreshToken: string; user: any }>('/auth/kakao', {
+                    kakaoAccessToken: token.accessToken,
+                    role: role
+                });
+
+                console.log("[AuthService] Backend Auth Response received:", !!response?.accessToken ? "Success" : "No token");
+
+                if (response?.accessToken) {
+                    await StorageService.setAccessToken(response.accessToken);
+                    if (response.refreshToken) {
+                        await StorageService.setRefreshToken(response.refreshToken);
+                    }
+                    if (response.user?.role) {
+                        await StorageService.setUserRole(response.user.role);
+                        console.log("[AuthService] User role saved:", response.user.role);
+                    }
+                    // 2. Sync Device Info
+                    console.log("[AuthService] Syncing device...");
+                    await this.syncDevice();
+                } else {
+                    console.warn("[AuthService] No access token in backend response");
+                }
+            } catch (apiError) {
+                console.error("[AuthService] Backend Authentication Failed:", apiError);
+            }
+
+            // Validate mandatory fields
             if (!profile.phoneNumber) {
                 console.warn("Phone number not provided by Kakao. This is a mandatory requirement.");
-                // Note: In real production, we might need to prompt for manual input if Kakao doesn't provide it
             }
 
             const userInfo: UserInfo = {
@@ -52,15 +87,39 @@ export class AuthService {
             };
 
             const deviceData = await this.getDeviceData();
-            const fullProfile = { ...userInfo, ...deviceData };
+            console.log("Logged in user with device data:", { ...userInfo, ...deviceData });
 
-            console.log("Logged in user with device data:", fullProfile);
-
-            // Save to Storage or Server here (StorageService.saveUser(fullProfile))
             return userInfo;
         } catch (error) {
             console.error("Kakao Login Error:", error);
             return null;
+        }
+    }
+
+    static async syncDevice() {
+        try {
+            const deviceData = await this.getDeviceData();
+            const response = await apiService.post('/devices/register', {
+                id: deviceData.deviceId,
+                device_uuid: deviceData.deviceId,
+                platform: deviceData.platform.toUpperCase(),
+                device_model: deviceData.model,
+                os_version: deviceData.osVersion,
+                app_version: DeviceInfo.getVersion(),
+            });
+            console.log("[AuthService] Device Synced Successfully, Response:", JSON.stringify(response, null, 2));
+        } catch (error) {
+            console.error("Device Sync Failed:", error);
+        }
+    }
+
+    static async syncPermissions(permissions: any) {
+        try {
+            const deviceData = await this.getDeviceData();
+            await apiService.patch(`/devices/${deviceData.deviceId}/permissions`, permissions);
+            console.log("Permissions Synced:", permissions);
+        } catch (error) {
+            console.error("Permission Sync Failed:", error);
         }
     }
 }
