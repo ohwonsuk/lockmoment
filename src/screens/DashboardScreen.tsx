@@ -188,7 +188,7 @@ export const DashboardScreen: React.FC = () => {
 
     return (
         <View style={styles.container}>
-            <Header />
+            <Header hasPermission={hasPermission} />
             <ScrollView
                 style={styles.flex1}
                 contentContainerStyle={styles.scrollContent}

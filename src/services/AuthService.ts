@@ -21,13 +21,29 @@ export interface DeviceData {
 }
 
 export class AuthService {
+    /**
+     * Convert device ID to valid UUID format (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+     * PostgreSQL requires proper UUID format with hyphens
+     */
+    private static formatAsUUID(deviceId: string): string {
+        // Remove all non-alphanumeric characters
+        const cleaned = deviceId.replace(/[^a-f0-9]/gi, '');
+
+        // Pad to 32 characters if needed
+        const padded = cleaned.padEnd(32, '0').substring(0, 32);
+
+        // Format as UUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+        return `${padded.substring(0, 8)}-${padded.substring(8, 12)}-${padded.substring(12, 16)}-${padded.substring(16, 20)}-${padded.substring(20, 32)}`;
+    }
+
     static async getDeviceData(): Promise<DeviceData> {
+        const rawDeviceId = await DeviceInfo.getUniqueId();
         return {
             platform: Platform.OS,
             osVersion: DeviceInfo.getSystemVersion(),
             brand: DeviceInfo.getBrand(),
             model: DeviceInfo.getModel(),
-            deviceId: await DeviceInfo.getUniqueId(),
+            deviceId: this.formatAsUUID(rawDeviceId),
         };
     }
 

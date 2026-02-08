@@ -10,9 +10,10 @@ interface Props {
     title?: string;
     showBack?: boolean;
     onBack?: () => void;
+    hasPermission?: boolean; // Permission status for shield icon color
 }
 
-export const Header: React.FC<Props> = ({ title = "락모먼트", showBack = false, onBack }) => {
+export const Header: React.FC<Props> = ({ title = "락모먼트", showBack = false, onBack, hasPermission }) => {
     const insets = useSafeAreaInsets();
     const { navigate, currentScreen } = useAppNavigation();
 
@@ -22,6 +23,12 @@ export const Header: React.FC<Props> = ({ title = "락모먼트", showBack = fal
         } else {
             navigate('Dashboard');
         }
+    };
+
+    // Shield icon color: green if permission granted, red if denied, default gray if unknown
+    const getShieldColor = () => {
+        if (hasPermission === undefined) return Colors.text; // Unknown state
+        return hasPermission ? '#10B981' : '#EF4444'; // Green : Red
     };
 
     return (
@@ -56,7 +63,7 @@ export const Header: React.FC<Props> = ({ title = "락모먼트", showBack = fal
                     <Icon
                         name="shield-checkmark-outline"
                         size={26}
-                        color={currentScreen === 'Permissions' ? Colors.primary : Colors.text}
+                        color={getShieldColor()}
                     />
                 </TouchableOpacity>
 

@@ -13,11 +13,14 @@ import { QRScannerScreen } from '../screens/QRScannerScreen';
 import { QRGeneratorScreen } from '../screens/QRGeneratorScreen';
 import { TeacherClassScreen } from '../screens/TeacherClassScreen';
 import { JoinScreen } from '../screens/JoinScreen';
+import { JoinInfoScreen } from '../screens/JoinInfoScreen';
+import { JoinCompleteScreen } from '../screens/JoinCompleteScreen';
+import { LinkSubUserScreen } from '../screens/LinkSubUserScreen';
 import { Colors } from '../theme/Colors';
 import { useAppNavigation } from './NavigationContext';
 
 export const AppNavigator: React.FC = () => {
-    const { currentScreen } = useAppNavigation();
+    const { currentScreen, currentParams } = useAppNavigation();
 
     const renderScreen = () => {
         switch (currentScreen) {
@@ -47,6 +50,12 @@ export const AppNavigator: React.FC = () => {
                 return <TeacherClassScreen />;
             case 'Join':
                 return <JoinScreen />;
+            case 'JoinInfo':
+                return <JoinInfoScreen />;
+            case 'JoinComplete':
+                return <JoinCompleteScreen route={{ params: currentParams }} />;
+            case 'LinkSubUser':
+                return <LinkSubUserScreen route={{ params: currentParams }} />;
             default:
                 return <DashboardScreen />;
         }

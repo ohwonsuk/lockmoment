@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 
-export type Screen = 'Dashboard' | 'Settings' | 'Permissions' | 'History' | 'Locking' | 'AddSchedule' | 'AppSelect' | 'NotificationSettings' | 'Login' | 'QRScanner' | 'QRGenerator' | 'TeacherClass' | 'Join';
+export type Screen = 'Dashboard' | 'Settings' | 'Permissions' | 'History' | 'Locking' | 'AddSchedule' | 'AppSelect' | 'NotificationSettings' | 'Login' | 'QRScanner' | 'QRGenerator' | 'TeacherClass' | 'Join' | 'JoinComplete' | 'LinkSubUser' | 'JoinInfo';
 
 interface NavigationContextType {
     currentScreen: Screen;

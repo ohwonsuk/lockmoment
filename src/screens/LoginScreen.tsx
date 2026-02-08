@@ -41,7 +41,7 @@ export const LoginScreen: React.FC = () => {
                 </View>
 
                 <View style={styles.buttonContainer}>
-                    <Typography variant="caption" color={Colors.textSecondary} style={{ textAlign: 'center' }}>
+                    {/* <Typography variant="caption" color={Colors.textSecondary} style={{ textAlign: 'center' }}>
                         테스트용 역할 선택 (디버깅)
                     </Typography>
                     <View style={styles.roleButtons}>
@@ -59,7 +59,7 @@ export const LoginScreen: React.FC = () => {
                         >
                             <Typography color="#FFF">교사 로그인</Typography>
                         </TouchableOpacity>
-                    </View>
+                    </View> */}
 
                     <TouchableOpacity
                         style={styles.kakaoButton}
@@ -68,7 +68,18 @@ export const LoginScreen: React.FC = () => {
                     >
                         <Icon name="chatbubble" size={20} color="#000000" />
                         <Typography bold color="#000000" style={styles.kakaoText}>
-                            {isLoading ? "로그인 중..." : "카카오로 시작하기"}
+                            {isLoading ? "로그인 중..." : "카카오 로그인"}
+                        </Typography>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.kakaoButton, { backgroundColor: '#FEE500', opacity: 0.9 }]}
+                        onPress={() => navigate('Join')}
+                        disabled={isLoading}
+                    >
+                        <Icon name="person-add" size={20} color="#000000" />
+                        <Typography bold color="#000000" style={styles.kakaoText}>
+                            카카오로 회원가입
                         </Typography>
                     </TouchableOpacity>
 
@@ -79,18 +90,11 @@ export const LoginScreen: React.FC = () => {
                     >
                         <Typography color={Colors.textSecondary}>게스트로 시작하기</Typography>
                     </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={[styles.smallButton, { backgroundColor: '#34C759', marginTop: 10 }]}
-                        onPress={() => navigate('Join')}
-                    >
-                        <Typography color="#FFF">회원가입 화면 미리보기 (심사용)</Typography>
-                    </TouchableOpacity>
                 </View>
 
                 <Typography variant="caption" color={Colors.textSecondary} style={styles.infoText}>
-                    로그인 시 이용약관 및 개인정보 처리방침에 동의하게 됩니다.
-                    서비스 오류 대응을 위해 플랫폼, OS버전, 기기정보가 수집됩니다.
+                    서비스 이용을 위해 기기정보가 수집되며,{"\n"}
+                    회원가입 시 이용약관 및 개인정보 처리방침에 동의하게 됩니다.
                 </Typography>
             </View>
         </View>
