@@ -186,5 +186,22 @@ export const StorageService = {
         } catch (e) {
             console.error('Failed to save user role', e);
         }
+    },
+
+    async hasGuidedPermissions(): Promise<boolean> {
+        try {
+            const val = await AsyncStorage.getItem('@lockmoment_permissions_guided');
+            return val === 'true';
+        } catch (e) {
+            return false;
+        }
+    },
+
+    async setGuidedPermissions(): Promise<void> {
+        try {
+            await AsyncStorage.setItem('@lockmoment_permissions_guided', 'true');
+        } catch (e) {
+            console.error('Failed to save permissions guided flag', e);
+        }
     }
 };

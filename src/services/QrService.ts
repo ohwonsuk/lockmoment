@@ -2,7 +2,7 @@ import { apiService } from './ApiService';
 import { AuthService } from './AuthService';
 
 export interface QrGenerateRequest {
-    type: 'CLASS_ATTEND' | 'USER_INSTANT_LOCK' | 'USER_SCHEDULE_LOCK';
+    type: 'CLASS_ATTEND' | 'USER_INSTANT_LOCK' | 'USER_SCHEDULE_LOCK' | 'CHILD_REGISTRATION';
     ref_id: string; // class_id, device_id, etc.
     lock_duration_minutes?: number;
     title?: string;
@@ -29,11 +29,16 @@ export interface QrScanResponse {
         allowedApps?: string[];
         preventAppRemoval?: boolean;
     };
+    registrationInfo?: {
+        parentId: string;
+        parentName: string;
+        childName: string;
+    };
 }
 
 export class QrService {
     static async generateQr(
-        type: 'CLASS_ATTEND' | 'USER_INSTANT_LOCK' | 'USER_SCHEDULE_LOCK' = 'USER_INSTANT_LOCK',
+        type: 'CLASS_ATTEND' | 'USER_INSTANT_LOCK' | 'USER_SCHEDULE_LOCK' | 'CHILD_REGISTRATION' = 'USER_INSTANT_LOCK',
         duration: number = 60,
         title?: string,
         blockedApps?: string[],

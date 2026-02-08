@@ -16,6 +16,8 @@ import { JoinScreen } from '../screens/JoinScreen';
 import { JoinInfoScreen } from '../screens/JoinInfoScreen';
 import { JoinCompleteScreen } from '../screens/JoinCompleteScreen';
 import { LinkSubUserScreen } from '../screens/LinkSubUserScreen';
+import { PermissionGuideScreen } from '../screens/PermissionGuideScreen';
+import { AdminScheduleScreen } from '../screens/AdminScheduleScreen';
 import { Colors } from '../theme/Colors';
 import { useAppNavigation } from './NavigationContext';
 
@@ -24,6 +26,8 @@ export const AppNavigator: React.FC = () => {
 
     const renderScreen = () => {
         switch (currentScreen) {
+            case 'PermissionGuide':
+                return <PermissionGuideScreen />;
             case 'Dashboard':
                 return <DashboardScreen />;
             case 'Settings':
@@ -56,6 +60,8 @@ export const AppNavigator: React.FC = () => {
                 return <JoinCompleteScreen route={{ params: currentParams }} />;
             case 'LinkSubUser':
                 return <LinkSubUserScreen route={{ params: currentParams }} />;
+            case 'AdminSchedule':
+                return <AdminScheduleScreen />;
             default:
                 return <DashboardScreen />;
         }

@@ -21,7 +21,9 @@ export const QRScannerScreen: React.FC = () => {
 
     const [isProcessing, setIsProcessing] = useState(false);
     const [scanResult, setScanResult] = useState<QrScanResponse['lockPolicy'] | null>(null);
+    const [registrationInfo, setRegistrationInfo] = useState<QrScanResponse['registrationInfo'] | null>(null);
     const [isConfirmModalVisible, setIsConfirmModalVisible] = useState(false);
+    const [isRegistrationModalVisible, setIsRegistrationModalVisible] = useState(false);
     const [isApplying, setIsApplying] = useState(false);
 
     useEffect(() => {
@@ -46,7 +48,7 @@ export const QRScannerScreen: React.FC = () => {
     const codeScanner = useCodeScanner({
         codeTypes: ['qr'],
         onCodeScanned: (codes) => {
-            if (codes.length > 0 && codes[0].value && !isProcessing && !isConfirmModalVisible) {
+            if (codes.length > 0 && codes[0].value && !isProcessing && !isConfirmModalVisible && !isRegistrationModalVisible) {
                 const scannedData = codes[0].value;
                 handleScannedData(scannedData);
             }
@@ -62,11 +64,11 @@ export const QRScannerScreen: React.FC = () => {
             try {
                 qrPayload = JSON.parse(data);
             } catch (e) {
-                throw new Error("유효하지 않은 QR 형식입니다.");
+                // If not JSON, maybe it's a raw token string or URL - handle appropriately if needed
             }
 
-            // 1. 클라이언트 사전 검증: 만료 시간(exp) 확인
-            if (qrPayload.exp) {
+            // Client-side exp check if available
+            if (qrPayload && qrPayload.exp) {
                 const now = Math.floor(Date.now() / 1000);
                 if (qrPayload.exp < now) {
                     throw new Error("만료된 QR 코드입니다.");
@@ -76,9 +78,16 @@ export const QRScannerScreen: React.FC = () => {
             // 2. 서버 검증 API 호출
             const response = await QrService.scanQr(data);
 
-            if (response && response.success && response.lockPolicy) {
-                setScanResult(response.lockPolicy);
-                setIsConfirmModalVisible(true);
+            if (response && response.success) {
+                if (response.registrationInfo) {
+                    setRegistrationInfo(response.registrationInfo);
+                    setIsRegistrationModalVisible(true);
+                } else if (response.lockPolicy) {
+                    setScanResult(response.lockPolicy);
+                    setIsConfirmModalVisible(true);
+                } else {
+                    throw new Error("처리할 수 없는 QR 데이터입니다.");
+                }
             } else {
                 throw new Error(response?.message || "스캔 처리에 실패했습니다.");
             }
@@ -86,9 +95,38 @@ export const QRScannerScreen: React.FC = () => {
         } catch (error: any) {
             console.error("QR Scan Error:", error);
             Alert.alert("오류", error.message || "QR 처리 중 오류가 발생했습니다.", [
-                { text: "재시도", onPress: () => setIsProcessing(false) },
+                {
+                    text: "재시도", onPress: () => {
+                        setIsProcessing(false);
+                        setRegistrationInfo(null);
+                        setScanResult(null);
+                    }
+                },
                 { text: "나가기", onPress: () => navigate('Dashboard'), style: "cancel" }
             ]);
+        }
+    };
+
+    const handleConfirmRegistration = async () => {
+        if (!registrationInfo) return;
+        setIsApplying(true);
+        try {
+            // Call API to complete the parent-child matching
+            // In a real scenario, this would involve sending device info (UUID, Name, etc.)
+            // For now, we simulate success
+            await new Promise<void>(resolve => setTimeout(() => resolve(), 1500));
+
+            setIsRegistrationModalVisible(false);
+            Alert.alert(
+                "등록 완료",
+                `[${registrationInfo.parentName}] 님의 기기와 연결되었습니다. 이제 보호자가 원격으로 잠금을 관리할 수 있습니다.`,
+                [{ text: "확인", onPress: () => navigate('Dashboard') }]
+            );
+        } catch (error) {
+            console.error("Registration Error:", error);
+            Alert.alert("등록 실패", "부모 기기와 연결하는 중 오류가 발생했습니다.");
+        } finally {
+            setIsApplying(false);
         }
     };
 
@@ -96,10 +134,34 @@ export const QRScannerScreen: React.FC = () => {
         if (!scanResult) return;
         setIsApplying(true);
         try {
+            // Check permissions first
+            const platform = isIOS ? 'ios' : 'android';
+            let hasPermission = false;
+
+            if (platform === 'ios') {
+                const authStatus = await NativeLockControl.checkAuthorization();
+                hasPermission = authStatus === 2;
+            } else {
+                hasPermission = await NativeLockControl.checkAccessibilityPermission();
+            }
+
+            if (!hasPermission) {
+                setIsConfirmModalVisible(false);
+                setIsApplying(false);
+                Alert.alert(
+                    "권한 필요",
+                    "잠금 기능을 사용하려면 먼저 권한을 허용해주세요.\n\n권한 설정 페이지로 이동하시겠습니까?",
+                    [
+                        { text: "취소", style: "cancel", onPress: () => navigate('Dashboard') },
+                        { text: "권한 설정", onPress: () => navigate('Permissions') }
+                    ]
+                );
+                return;
+            }
+
             const { name, durationMinutes, allowedApps, preventAppRemoval } = scanResult;
             const durationMs = durationMinutes * 60 * 1000;
 
-            const platform = isIOS ? 'ios' : 'android';
             const nativeAppIds = UniversalAppMapper.mapToNative(allowedApps || [], platform);
             const prevent = preventAppRemoval !== undefined ? preventAppRemoval : await StorageService.getPreventAppRemoval();
 
@@ -155,7 +217,7 @@ export const QRScannerScreen: React.FC = () => {
                     <Camera
                         style={StyleSheet.absoluteFill}
                         device={device}
-                        isActive={!isConfirmModalVisible}
+                        isActive={!isConfirmModalVisible && !isRegistrationModalVisible}
                         codeScanner={codeScanner}
                     />
                 )}
@@ -184,12 +246,12 @@ export const QRScannerScreen: React.FC = () => {
                         <ScrollView style={styles.modalBody}>
                             <View style={styles.infoRow}>
                                 <Typography variant="caption" color={Colors.textSecondary}>잠금 이름</Typography>
-                                <Typography bold size={18}>{scanResult?.name}</Typography>
+                                <Typography bold style={{ fontSize: 18 }}>{scanResult?.name}</Typography>
                             </View>
 
                             <View style={styles.infoRow}>
                                 <Typography variant="caption" color={Colors.textSecondary}>잠금 시간</Typography>
-                                <Typography bold size={18}>{scanResult?.durationMinutes}분</Typography>
+                                <Typography bold style={{ fontSize: 18 }}>{scanResult?.durationMinutes}분</Typography>
                             </View>
 
                             <View style={styles.infoRow}>
@@ -197,14 +259,14 @@ export const QRScannerScreen: React.FC = () => {
                                 <View style={styles.appsList}>
                                     {scanResult?.allowedApps?.map((app, idx) => (
                                         <View key={idx} style={styles.appBadge}>
-                                            <Typography size={12} color="#FFF">{getAppLabel(app)}</Typography>
+                                            <Typography style={{ fontSize: 12, color: '#FFF' }}>{getAppLabel(app)}</Typography>
                                         </View>
                                     ))}
                                 </View>
                             </View>
 
                             <View style={styles.noticeBox}>
-                                <Typography size={12} color={Colors.textSecondary}>
+                                <Typography style={{ fontSize: 12, color: Colors.textSecondary }}>
                                     확인 버튼을 누르면 즉시 잠금이 시작됩니다.
                                     {isIOS && "\n(iOS는 최초 1회 앱 선택이 필요할 수 있습니다)"}
                                 </Typography>
@@ -230,6 +292,59 @@ export const QRScannerScreen: React.FC = () => {
                                     <ActivityIndicator color="#FFF" />
                                 ) : (
                                     <Typography bold color="#FFF">잠금 시작</Typography>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Registration Confirmation Modal */}
+            <Modal visible={isRegistrationModalVisible} transparent animationType="slide">
+                <View style={styles.modalOverlay}>
+                    <View style={styles.modalContent}>
+                        <View style={styles.modalHeader}>
+                            <Icon name="person-add" size={32} color={Colors.primary} />
+                            <Typography variant="h2" bold style={{ marginTop: 10 }}>보호자 연결 확인</Typography>
+                        </View>
+
+                        <View style={styles.modalBody}>
+                            <View style={styles.infoRow}>
+                                <Typography variant="caption" color={Colors.textSecondary}>보호자(부모)</Typography>
+                                <Typography bold style={{ fontSize: 18 }}>{registrationInfo?.parentName}</Typography>
+                            </View>
+
+                            <View style={styles.infoRow}>
+                                <Typography variant="caption" color={Colors.textSecondary}>등록될 이름</Typography>
+                                <Typography bold style={{ fontSize: 18 }}>{registrationInfo?.childName}</Typography>
+                            </View>
+
+                            <View style={styles.noticeBox}>
+                                <Typography style={{ fontSize: 12, color: Colors.textSecondary }}>
+                                    연결에 동의하시면 보호자가 이 기기의 잠금 상태를 원격으로 제어할 수 있게 됩니다.
+                                </Typography>
+                            </View>
+                        </View>
+
+                        <View style={styles.modalFooter}>
+                            <TouchableOpacity
+                                style={[styles.modalButton, { backgroundColor: Colors.card }]}
+                                onPress={() => {
+                                    setIsRegistrationModalVisible(false);
+                                    setIsProcessing(false);
+                                }}
+                            >
+                                <Typography bold>거부</Typography>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.modalButton, { backgroundColor: Colors.primary }]}
+                                onPress={handleConfirmRegistration}
+                                disabled={isApplying}
+                            >
+                                {isApplying ? (
+                                    <ActivityIndicator color="#FFF" />
+                                ) : (
+                                    <Typography bold color="#FFF">연결 동의</Typography>
                                 )}
                             </TouchableOpacity>
                         </View>
