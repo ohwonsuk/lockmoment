@@ -26,25 +26,65 @@ class ApiService {
     }
 
     private setupInterceptors() {
-        // Request Interceptor: Attach Token
+        // Request Interceptor: Attach JWT Token
         this.api.interceptors.request.use(
             async (config) => {
-                const token = await StorageService.getAccessToken();
-                if (token) {
-                    config.headers.Authorization = `Bearer ${token}`;
+                // 인증 불필요 엔드포인트
+                const publicEndpoints = ['/auth/', '/qr/scan'];
+                const isPublic = publicEndpoints.some(ep => config.url?.includes(ep));
+
+                if (!isPublic) {
+                    const token = await StorageService.getAccessToken();
+                    if (token) {
+                        config.headers.Authorization = `Bearer ${token}`;
+                    }
                 }
+
                 return config;
             },
             (error) => Promise.reject(error)
         );
 
-        // Response Interceptor: Handle Errors (e.g., 401)
+        // Response Interceptor: Handle 401 Errors and Auto-Refresh
         this.api.interceptors.response.use(
-            (response) => {
-                return response;
-            },
+            (response) => response,
             async (error) => {
                 const originalRequest = error.config;
+
+                // 401 에러이고 재시도하지 않은 경우
+                if (error.response?.status === 401 && !originalRequest._retry) {
+                    originalRequest._retry = true;
+
+                    console.log('[ApiService] 401 Unauthorized, attempting token refresh...');
+
+                    try {
+                        const refreshToken = await StorageService.getRefreshToken();
+                        if (!refreshToken) {
+                            console.log('[ApiService] No refresh token, clearing tokens');
+                            await StorageService.clearTokens();
+                            return Promise.reject(error);
+                        }
+
+                        // 토큰 갱신 요청
+                        const response = await this.api.post<{ accessToken: string }>('/auth/refresh', {
+                            refreshToken,
+                        });
+
+                        if (response.data?.accessToken) {
+                            await StorageService.setAccessToken(response.data.accessToken);
+                            console.log('[ApiService] Token refreshed successfully, retrying original request');
+
+                            // 원래 요청 재시도
+                            originalRequest.headers.Authorization = `Bearer ${response.data.accessToken}`;
+                            return this.api(originalRequest);
+                        }
+                    } catch (refreshError) {
+                        console.error('[ApiService] Token refresh failed:', refreshError);
+                        await StorageService.clearTokens();
+                        return Promise.reject(refreshError);
+                    }
+                }
+
                 return Promise.reject(error);
             }
         );

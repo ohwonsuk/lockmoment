@@ -18,6 +18,7 @@ import { JoinCompleteScreen } from '../screens/JoinCompleteScreen';
 import { LinkSubUserScreen } from '../screens/LinkSubUserScreen';
 import { PermissionGuideScreen } from '../screens/PermissionGuideScreen';
 import { AdminScheduleScreen } from '../screens/AdminScheduleScreen';
+import { AppleJoinScreen } from '../screens/AppleJoinScreen';
 import { Colors } from '../theme/Colors';
 import { useAppNavigation } from './NavigationContext';
 
@@ -58,6 +59,8 @@ export const AppNavigator: React.FC = () => {
                 return <JoinInfoScreen />;
             case 'JoinComplete':
                 return <JoinCompleteScreen route={{ params: currentParams }} />;
+            case 'AppleJoin':
+                return <AppleJoinScreen />;
             case 'LinkSubUser':
                 return <LinkSubUserScreen route={{ params: currentParams }} />;
             case 'AdminSchedule':

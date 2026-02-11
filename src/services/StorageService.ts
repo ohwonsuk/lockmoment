@@ -139,9 +139,13 @@ export const StorageService = {
         }
     },
 
-    async setAccessToken(token: string): Promise<void> {
+    async setAccessToken(token: string | null): Promise<void> {
         try {
-            await AsyncStorage.setItem('@lockmoment_access_token', token);
+            if (token === null) {
+                await AsyncStorage.removeItem('@lockmoment_access_token');
+            } else {
+                await AsyncStorage.setItem('@lockmoment_access_token', token);
+            }
         } catch (e) {
             console.error('Failed to save access token', e);
         }
@@ -155,9 +159,13 @@ export const StorageService = {
         }
     },
 
-    async setRefreshToken(token: string): Promise<void> {
+    async setRefreshToken(token: string | null): Promise<void> {
         try {
-            await AsyncStorage.setItem('@lockmoment_refresh_token', token);
+            if (token === null) {
+                await AsyncStorage.removeItem('@lockmoment_refresh_token');
+            } else {
+                await AsyncStorage.setItem('@lockmoment_refresh_token', token);
+            }
         } catch (e) {
             console.error('Failed to save refresh token', e);
         }
@@ -180,9 +188,13 @@ export const StorageService = {
         }
     },
 
-    async setUserRole(role: string): Promise<void> {
+    async setUserRole(role: string | null): Promise<void> {
         try {
-            await AsyncStorage.setItem('@lockmoment_user_role', role);
+            if (role === null) {
+                await AsyncStorage.removeItem('@lockmoment_user_role');
+            } else {
+                await AsyncStorage.setItem('@lockmoment_user_role', role);
+            }
         } catch (e) {
             console.error('Failed to save user role', e);
         }

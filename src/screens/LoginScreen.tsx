@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Image, Platform } from 'react-native';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Icon } from '../components/Icon';
@@ -11,22 +11,41 @@ export const LoginScreen: React.FC = () => {
     const [isLoading, setIsLoading] = useState(false);
 
     const handleKakaoLogin = async (role: 'PARENT' | 'TEACHER' = 'PARENT') => {
-        console.log(`[LoginScreen] Kakao Login button pressed (role: ${role})`);
         setIsLoading(true);
         const user = await AuthService.loginWithKakao(role);
-        console.log("[LoginScreen] Kakao Login finished, user:", user ? "Success" : "Failed");
         setIsLoading(false);
         if (user) {
             navigate('Dashboard');
         }
     };
 
+    const handleAppleSignIn = async () => {
+        setIsLoading(true);
+        const result = await AuthService.loginWithApple();
+        setIsLoading(false);
+
+        if (!result) return;
+
+        if ('status' in result && result.status === 'NEW_USER') {
+            // 신규 사용자 또는 정보 부족 - 가입 정보 입력 화면으로 이동
+            navigate('AppleJoin', {
+                appleSub: result.appleSub,
+                email: result.email,
+                name: result.name
+            });
+        } else if ('id' in result) {
+            // 기존 사용자 - 대시보드로 이동
+            navigate('Dashboard');
+        }
+    };
+
     const handleGuestLogin = async () => {
         setIsLoading(true);
-        // Register device as 'Student' (Anonymous)
-        await AuthService.syncDevice();
+        const user = await AuthService.loginAsGuest();
         setIsLoading(false);
-        navigate('Dashboard');
+        if (user) {
+            navigate('Dashboard');
+        }
     };
 
     return (
@@ -41,25 +60,16 @@ export const LoginScreen: React.FC = () => {
                 </View>
 
                 <View style={styles.buttonContainer}>
-                    {/* <Typography variant="caption" color={Colors.textSecondary} style={{ textAlign: 'center' }}>
-                        테스트용 역할 선택 (디버깅)
-                    </Typography>
-                    <View style={styles.roleButtons}>
-                        <TouchableOpacity
-                            style={[styles.smallButton, { backgroundColor: Colors.primary }]}
-                            onPress={() => handleKakaoLogin('PARENT')}
-                            disabled={isLoading}
-                        >
-                            <Typography color="#FFF">부모 로그인</Typography>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[styles.smallButton, { backgroundColor: '#FF9500' }]}
-                            onPress={() => handleKakaoLogin('TEACHER')}
-                            disabled={isLoading}
-                        >
-                            <Typography color="#FFF">교사 로그인</Typography>
-                        </TouchableOpacity>
-                    </View> */}
+                    <TouchableOpacity
+                        style={[styles.kakaoButton, { backgroundColor: '#FEE500', opacity: 0.9 }]}
+                        onPress={() => navigate('Join')}
+                        disabled={isLoading}
+                    >
+                        <Icon name="person-add" size={20} color="#000000" />
+                        <Typography bold color="#000000" style={styles.buttonText}>
+                            카카오로 회원가입
+                        </Typography>
+                    </TouchableOpacity>
 
                     <TouchableOpacity
                         style={styles.kakaoButton}
@@ -67,21 +77,23 @@ export const LoginScreen: React.FC = () => {
                         disabled={isLoading}
                     >
                         <Icon name="chatbubble" size={20} color="#000000" />
-                        <Typography bold color="#000000" style={styles.kakaoText}>
-                            {isLoading ? "로그인 중..." : "카카오 로그인"}
+                        <Typography bold color="#000000" style={styles.buttonText}>
+                            {isLoading ? "로그인 중..." : "카카오로 계속하기"}
                         </Typography>
                     </TouchableOpacity>
 
-                    <TouchableOpacity
-                        style={[styles.kakaoButton, { backgroundColor: '#FEE500', opacity: 0.9 }]}
-                        onPress={() => navigate('Join')}
-                        disabled={isLoading}
-                    >
-                        <Icon name="person-add" size={20} color="#000000" />
-                        <Typography bold color="#000000" style={styles.kakaoText}>
-                            카카오로 회원가입
-                        </Typography>
-                    </TouchableOpacity>
+                    {Platform.OS === 'ios' && (
+                        <TouchableOpacity
+                            style={styles.appleButton}
+                            onPress={handleAppleSignIn}
+                            disabled={isLoading}
+                        >
+                            <Icon name="logo-apple" size={20} color="#FFFFFF" />
+                            <Typography bold color="#FFFFFF" style={styles.buttonText}>
+                                {isLoading ? "로그인 중..." : "Apple로 계속하기"}
+                            </Typography>
+                        </TouchableOpacity>
+                    )}
 
                     <TouchableOpacity
                         style={styles.guestButton}
@@ -125,6 +137,17 @@ const styles = StyleSheet.create({
     buttonContainer: {
         gap: 12,
     },
+    appleButton: {
+        flexDirection: 'row',
+        backgroundColor: '#000000',
+        paddingVertical: 16,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 10,
+        borderWidth: 1,
+        borderColor: '#555555', // 밝은 테두리색 추가
+    },
     kakaoButton: {
         flexDirection: 'row',
         backgroundColor: '#FEE500',
@@ -134,22 +157,11 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 10,
     },
-    kakaoText: {
+    buttonText: {
         fontSize: 16,
     },
     guestButton: {
         paddingVertical: 16,
-        alignItems: 'center',
-    },
-    roleButtons: {
-        flexDirection: 'row',
-        gap: 10,
-        marginBottom: 10,
-    },
-    smallButton: {
-        flex: 1,
-        paddingVertical: 12,
-        borderRadius: 10,
         alignItems: 'center',
     },
     infoText: {

@@ -1,6 +1,8 @@
 import { Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 import { login, getProfile } from '@react-native-seoul/kakao-login';
+import appleAuth from '@invertase/react-native-apple-authentication';
+import { decode as base64Decode } from 'base-64';
 import { apiService } from './ApiService';
 import { StorageService } from './StorageService';
 
@@ -136,6 +138,235 @@ export class AuthService {
             console.log("Permissions Synced:", permissions);
         } catch (error) {
             console.error("Permission Sync Failed:", error);
+        }
+    }
+
+    /**
+     * Apple Sign-In
+     */
+    static async loginWithApple(): Promise<UserInfo | { status: 'NEW_USER'; appleSub: string; email?: string; name?: string } | null> {
+        try {
+            console.log("[AuthService] Starting Apple Sign-In...");
+
+            const appleAuthRequestResponse = await appleAuth.performRequest({
+                requestedOperation: appleAuth.Operation.LOGIN,
+                requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
+            });
+
+            const { identityToken, user, email, fullName } = appleAuthRequestResponse;
+
+            console.log("[AuthService] Apple Sign-In Success");
+
+            // 백엔드로 identityToken 전송
+            console.log("[AuthService] Calling Backend Auth (/auth/apple)");
+            const response = await apiService.post<{
+                success: boolean;
+                status?: 'NEW_USER';
+                appleSub?: string;
+                accessToken?: string;
+                refreshToken?: string;
+                user?: any;
+                email?: string;
+                name?: string;
+            }>('/auth/apple', {
+                identityToken,
+                user: {
+                    user,
+                    email,
+                    fullName
+                }
+            });
+
+            if (response?.status === 'NEW_USER') {
+                return {
+                    status: 'NEW_USER',
+                    appleSub: response.appleSub || '',
+                    email: response.email,
+                    name: response.name
+                };
+            }
+
+            if (response?.accessToken) {
+                await StorageService.setAccessToken(response.accessToken);
+                if (response.refreshToken) {
+                    await StorageService.setRefreshToken(response.refreshToken);
+                }
+                if (response.user?.role) {
+                    await StorageService.setUserRole(response.user.role);
+                    console.log("[AuthService] User role saved:", response.user.role);
+                }
+
+                // 디바이스 동기화
+                console.log("[AuthService] Syncing device...");
+                await this.syncDevice();
+
+                return {
+                    id: response.user.id,
+                    phoneNumber: response.user.phone || '',
+                    email: response.user.email,
+                    name: response.user.name,
+                };
+            }
+
+            return null;
+        } catch (error) {
+            console.error("[AuthService] Apple Sign-In failed:", error);
+            return null;
+        }
+    }
+
+    /**
+     * 회원가입 처리 (추가 정보 입력 후)
+     */
+    static async registerUser(data: {
+        provider: 'APPLE' | 'KAKAO';
+        appleSub?: string;
+        kakaoUserId?: string;
+        name: string;
+        phone: string;
+        role: 'PARENT' | 'TEACHER';
+        email?: string;
+    }): Promise<UserInfo | null> {
+        try {
+            console.log("[AuthService] Starting User Registration...");
+            const response = await apiService.post<{ accessToken: string; refreshToken: string; user: any }>('/auth/register', data);
+
+            if (response?.accessToken) {
+                await StorageService.setAccessToken(response.accessToken);
+                if (response.refreshToken) {
+                    await StorageService.setRefreshToken(response.refreshToken);
+                }
+                if (response.user?.role) {
+                    await StorageService.setUserRole(response.user.role);
+                }
+
+                // 디바이스 동기화
+                await this.syncDevice();
+
+                return {
+                    id: response.user.id,
+                    phoneNumber: response.user.phone,
+                    email: response.user.email,
+                    name: response.user.name,
+                };
+            }
+            return null;
+        } catch (error) {
+            console.error("[AuthService] Registration failed:", error);
+            return null;
+        }
+    }
+
+    /**
+     * 익명 사용자 로그인 (게스트 모드)
+     */
+    static async loginAsGuest(): Promise<UserInfo | null> {
+        try {
+            console.log("[AuthService] Starting Guest Login...");
+
+            const deviceData = await this.getDeviceData();
+
+            const response = await apiService.post<{ accessToken: string; refreshToken: string; user: any }>('/auth/anonymous', {
+                deviceData,
+            });
+
+            console.log("[AuthService] Guest Login Response received:", !!response?.accessToken ? "Success" : "No token");
+
+            if (response?.accessToken) {
+                await StorageService.setAccessToken(response.accessToken);
+                if (response.refreshToken) {
+                    await StorageService.setRefreshToken(response.refreshToken);
+                }
+                if (response.user?.role) {
+                    await StorageService.setUserRole(response.user.role);
+                }
+
+                return {
+                    id: response.user.id,
+                    phoneNumber: '',
+                    name: 'Guest',
+                };
+            }
+
+            return null;
+        } catch (error) {
+            console.error("[AuthService] Guest login failed:", error);
+            return null;
+        }
+    }
+
+    /**
+     * 액세스 토큰 갱신
+     */
+    static async refreshAccessToken(): Promise<boolean> {
+        try {
+            const refreshToken = await StorageService.getRefreshToken();
+            if (!refreshToken) {
+                console.log("[AuthService] No refresh token available");
+                return false;
+            }
+
+            console.log("[AuthService] Refreshing access token...");
+            const response = await apiService.post<{ accessToken: string }>('/auth/refresh', {
+                refreshToken,
+            });
+
+            if (response?.accessToken) {
+                await StorageService.setAccessToken(response.accessToken);
+                console.log("[AuthService] Access token refreshed successfully");
+                return true;
+            }
+
+            return false;
+        } catch (error) {
+            console.error("[AuthService] Token refresh failed:", error);
+            return false;
+        }
+    }
+
+    /**
+     * 유효한 토큰 가져오기 (만료 시 자동 갱신)
+     */
+    static async getValidToken(): Promise<string | null> {
+        const token = await StorageService.getAccessToken();
+        if (!token) {
+            return null;
+        }
+
+        try {
+            // JWT 디코딩하여 만료 확인
+            const payload = JSON.parse(base64Decode(token.split('.')[1]));
+            const expiresAt = payload.exp * 1000;
+
+            // 5분 이내 만료 예정이면 갱신
+            if (expiresAt - Date.now() < 5 * 60 * 1000) {
+                console.log("[AuthService] Token expiring soon, refreshing...");
+                const refreshed = await this.refreshAccessToken();
+                if (refreshed) {
+                    return await StorageService.getAccessToken();
+                }
+                return null;
+            }
+
+            return token;
+        } catch (error) {
+            // 디코딩 실패 시 그냥 토큰 반환
+            console.warn("[AuthService] Token decode failed, returning token as-is");
+            return token;
+        }
+    }
+
+    /**
+     * 로그아웃
+     */
+    static async logout(): Promise<void> {
+        try {
+            await StorageService.setAccessToken(null);
+            await StorageService.setRefreshToken(null);
+            await StorageService.setUserRole(null);
+            console.log("[AuthService] Logged out successfully");
+        } catch (error) {
+            console.error("[AuthService] Logout failed:", error);
         }
     }
 }

@@ -1,0 +1,22 @@
+{
+    "name": "lockmoment-api",
+    "version": "2.1.0",
+    "description": "LockMoment Lambda API with JWT authentication",
+    "type": "module",
+    "main": "index(260210).mjs",
+    "scripts": {
+        "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "keywords": [
+        "lockmoment",
+        "lambda",
+        "api",
+        "jwt"
+    ],
+    "author": "LockMoment Team",
+    "license": "ISC",
+    "dependencies": {
+        "pg": "^8.11.3",
+        "jose": "^5.2.2"
+    }
+}
