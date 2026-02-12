@@ -11,7 +11,7 @@ export const JoinInfoScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
     const [userRole, setUserRole] = useState<'PARENT' | 'TEACHER'>('PARENT');
     const [email, setEmail] = useState('example@kakao.com'); // Mock pre-filled from Kakao
-    const [nickname, setNickname] = useState('홍*동'); // Mock from Kakao
+    const [name, setName] = useState('홍길동'); // Mock from Kakao
     const [phone, setPhone] = useState('010-****-5678'); // Mock from Kakao
     const [profileImage, setProfileImage] = useState('https://via.placeholder.com/150'); // Mock Kakao profile
 
@@ -49,8 +49,8 @@ export const JoinInfoScreen: React.FC = () => {
                     <Typography bold style={styles.label}>필수 정보 확인</Typography>
                     <View style={styles.mandatoryCard}>
                         <View style={styles.mandatoryRow}>
-                            <Typography variant="caption" color={Colors.textSecondary}>이름(닉네임)</Typography>
-                            <Typography bold style={{ fontSize: 16 }}>{nickname}</Typography>
+                            <Typography variant="caption" color={Colors.textSecondary}>이름</Typography>
+                            <Typography bold style={{ fontSize: 16 }}>{name}</Typography>
                         </View>
                         <View style={styles.mandatoryRow}>
                             <Typography variant="caption" color={Colors.textSecondary}>휴대폰 번호</Typography>

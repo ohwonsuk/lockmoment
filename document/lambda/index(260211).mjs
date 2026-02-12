@@ -89,7 +89,6 @@ export const handler = async (event) => {
         // body가 비어있거나 JSON이 아닌 경우
     }
 
-    // CORS preflight
     let client = null;
     try {
         // CORS preflight
@@ -241,11 +240,11 @@ export const handler = async (event) => {
 
             if (provider === 'APPLE') {
                 insertQuery = `INSERT INTO users (id, auth_provider, apple_sub, email, display_name, phone_number, created_at, updated_at)
-                               VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING *`;
+                                VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING *`;
                 insertParams = [userId, provider, appleSub, email, name, phone];
             } else if (provider === 'KAKAO') {
                 insertQuery = `INSERT INTO users (id, auth_provider, kakao_user_id, email, display_name, phone_number, created_at, updated_at)
-                               VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING *`;
+                                VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) RETURNING *`;
                 insertParams = [userId, provider, kakaoUserId, email, name, phone];
             }
 
@@ -274,33 +273,13 @@ export const handler = async (event) => {
             });
         }
 
-        // POST /auth/kakao - 카카오 로그인
+        // POST /auth/kakao - 카카오 로그인 (이미 검증된 ID를 받음)
         if (httpMethod === 'POST' && path === '/auth/kakao') {
-            const { kakaoAccessToken, role, name } = data;
+            const { kakaoUserId, email, name, phoneNumber, role } = data;
 
-            console.log(`[Auth/Kakao] Fetching profile from Kakao... Token: ${kakaoAccessToken?.substring(0, 10)}...`);
-
-            // 카카오 API로 사용자 정보 조회
-            let kakaoUser;
-            try {
-                const kakaoResponse = await fetch('https://kapi.kakao.com/v2/user/me', {
-                    headers: { 'Authorization': `Bearer ${kakaoAccessToken}` }
-                });
-
-                if (!kakaoResponse.ok) {
-                    const errTxt = await kakaoResponse.text();
-                    console.error('[Auth/Kakao] Kakao API Error:', errTxt);
-                    return response(401, { success: false, message: '카카오 인증 실패', detail: errTxt });
-                }
-
-                kakaoUser = await kakaoResponse.json();
-                console.log(`[Auth/Kakao] Kakao ID: ${kakaoUser.id}`);
-            } catch (fetchError) {
-                console.error('[Auth/Kakao] Fetch Error:', fetchError);
-                return response(500, { success: false, message: '카카오 서버 통신 오류', detail: fetchError.message });
+            if (!kakaoUserId) {
+                return response(400, { success: false, message: 'kakaoUserId is required' });
             }
-
-            const kakaoUserId = kakaoUser.id.toString();
 
             // 사용자 및 역할 조회 (가장 최근 등록된 역할 우선)
             let userResult = await client.query(
@@ -318,16 +297,19 @@ export const handler = async (event) => {
                 console.log(`[Auth/Kakao] Registering new user... Role: ${role}`);
                 const userId = getUUID();
                 const newUserRole = role || 'PARENT';
-                // 신규 사용자 생성
+
+                // 신규 사용자 생성 (전달받은 name 사용)
+                const displayName = name || 'Kakao User';
+
                 await client.query(
                     `INSERT INTO users (id, auth_provider, kakao_user_id, email, display_name, phone_number, created_at, updated_at)
                      VALUES ($1, 'KAKAO', $2, $3, $4, $5, NOW(), NOW())`,
                     [
                         userId,
                         kakaoUserId,
-                        kakaoUser.kakao_account?.email,
-                        kakaoUser.kakao_account?.profile?.nickname || kakaoUser.properties?.nickname || name || 'Kakao User',
-                        kakaoUser.kakao_account?.phone_number
+                        email || null,
+                        displayName,
+                        phoneNumber || null // 전화번호는 나중에 register에서 받을 수 있음
                     ]
                 );
 

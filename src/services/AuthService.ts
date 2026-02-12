@@ -2,6 +2,7 @@ import { Platform } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 import { login, getProfile } from '@react-native-seoul/kakao-login';
 import appleAuth from '@invertase/react-native-apple-authentication';
+// @ts-ignore
 import { decode as base64Decode } from 'base-64';
 import { apiService } from './ApiService';
 import { StorageService } from './StorageService';
@@ -62,33 +63,58 @@ export class AuthService {
             const profile = await getProfile();
             console.log("[AuthService] Kakao Profile fetched:", JSON.stringify(profile, null, 2));
 
-            // 1. Authenticate with Backend
-            console.log(`[AuthService] Calling Backend Auth (/auth/kakao) with role: ${role}`);
+            // 1. Verify with Auth Lambda (Internet accessible)
+            // Note: Replace this URL with your actual lockmoment-auth-kakao endpoint
+            const AUTH_VERIFY_URL = 'https://18gffqu5rb.execute-api.ap-northeast-2.amazonaws.com/auth/kakao/verify';
+
+            console.log("[AuthService] Verifying Kakao Token with Auth Lambda...");
+            let verifiedData;
+            try {
+                // Using axios directly for the external auth lambda if it has a different base URL
+                const verifyResponse = await apiService.post<any>(AUTH_VERIFY_URL, {
+                    kakaoAccessToken: token.accessToken
+                });
+                verifiedData = verifyResponse;
+                console.log("[AuthService] Kakao verification successful:", verifiedData.providerUserId);
+            } catch (verifyError) {
+                console.error("[AuthService] Kakao Verification Failed:", verifyError);
+                return null;
+            }
+
+            // 2. Authenticate with Main Backend (VPC restricted)
+            console.log(`[AuthService] Calling Main Backend Auth (/auth/kakao) with role: ${role}`);
             try {
                 const response = await apiService.post<{ accessToken: string; refreshToken: string; user: any }>('/auth/kakao', {
-                    kakaoAccessToken: token.accessToken,
+                    kakaoUserId: verifiedData.providerUserId,
+                    email: verifiedData.email,
+                    name: verifiedData.name, // Use 'name' instead of 'nickname'
+                    phoneNumber: verifiedData.phoneNumber,
                     role: role
                 });
 
-                console.log("[AuthService] Backend Auth Response received:", !!response?.accessToken ? "Success" : "No token");
+                console.log("[AuthService] Main Backend Auth Response received:", !!response?.accessToken ? "Success" : "No token");
 
-                if (response?.accessToken) {
-                    await StorageService.setAccessToken(response.accessToken);
-                    if (response.refreshToken) {
-                        await StorageService.setRefreshToken(response.refreshToken);
-                    }
-                    if (response.user?.role) {
-                        await StorageService.setUserRole(response.user.role);
-                        console.log("[AuthService] User role saved:", response.user.role);
-                    }
-                    // 2. Sync Device Info
-                    console.log("[AuthService] Syncing device...");
-                    await this.syncDevice();
-                } else {
+                if (!response?.accessToken) {
                     console.warn("[AuthService] No access token in backend response");
+                    return null;
                 }
+
+                await StorageService.setAccessToken(response.accessToken);
+                if (response.refreshToken) {
+                    await StorageService.setRefreshToken(response.refreshToken);
+                }
+                if (response.user?.role) {
+                    await StorageService.setUserRole(response.user.role);
+                    console.log("[AuthService] User role saved:", response.user.role);
+                }
+
+                // 3. Sync Device Info
+                console.log("[AuthService] Syncing device...");
+                await this.syncDevice();
+
             } catch (apiError) {
-                console.error("[AuthService] Backend Authentication Failed:", apiError);
+                console.error("[AuthService] Main Backend Authentication Failed:", apiError);
+                return null;
             }
 
             // Validate mandatory fields
@@ -97,10 +123,10 @@ export class AuthService {
             }
 
             const userInfo: UserInfo = {
-                id: String(profile.id),
-                phoneNumber: profile.phoneNumber || '',
-                email: profile.email,
-                name: profile.nickname,
+                id: verifiedData.providerUserId,
+                phoneNumber: verifiedData.phoneNumber || profile.phoneNumber || '',
+                email: verifiedData.email,
+                name: verifiedData.name,
                 birthYear: profile.birthyear
             };
 

@@ -88,7 +88,7 @@ export const JoinScreen: React.FC = () => {
         setModalVisible(true);
     };
 
-    const MANDATORY_3RD_PARTY_TEXT = `락모먼트 서비스 내 이용자 식별, 회원관리 및 서비스 제공을 위해 회원번호와 함께 '(카카오에서 수신한 이름)' 님의 개인정보를 제공합니다. 해당 정보는 동의 철회 또는 서비스 탈퇴 시 지체없이 파기됩니다. 아래 동의를 거부할 권리가 있으며, 동의를 거부할 경우 서비스 이용이 제한됩니다.
+    const MANDATORY_3RD_PARTY_TEXT = `락모먼트 서비스 내 이용자 식별, 회원관리 및 서비스 제공을 위해 회원번호와 함께 이름 님의 개인정보를 제공합니다. 해당 정보는 동의 철회 또는 서비스 탈퇴 시 지체없이 파기됩니다. 아래 동의를 거부할 권리가 있으며, 동의를 거부할 경우 서비스 이용이 제한됩니다.
 
 [제공 하는 자]
 카카오
@@ -97,7 +97,7 @@ export const JoinScreen: React.FC = () => {
 락모먼트
 
 [필수 제공 항목]
-프로필 정보 : 이름(닉네임), 휴대폰번호, 카카오 ID
+프로필 정보 : 이름, 휴대폰번호, 카카오 ID
 
 [제공 목적]
 락모먼트 서비스 내 이용자 식별, 회원관리 및 서비스 제공
@@ -105,7 +105,7 @@ export const JoinScreen: React.FC = () => {
 [보유 기간]
 동의 철회 또는 서비스 탈퇴 시 지체없이 파기`;
 
-    const OPTIONAL_3RD_PARTY_TEXT = `락모먼트 서비스 내 이용자 식별, 회원관리 및 서비스 제공을 위해 회원번호와 함께 '(카카오 이름)' 님의 개인정보를 제공합니다. 해당 정보는 동의 철회 또는 서비스 탈퇴 시 지체없이 파기됩니다. 아래 동의를 거부할 권리가 있으며, 동의를 거부할 경우 기재된 목적의 일부 서비스 이용이 제한될 수 있습니다.
+    const OPTIONAL_3RD_PARTY_TEXT = `락모먼트 서비스 내 이용자 식별, 회원관리 및 서비스 제공을 위해 회원번호와 함께 이름 님의 개인정보를 제공합니다. 해당 정보는 동의 철회 또는 서비스 탈퇴 시 지체없이 파기됩니다. 아래 동의를 거부할 권리가 있으며, 동의를 거부할 경우 기재된 목적의 일부 서비스 이용이 제한될 수 있습니다.
 
 [제공 하는 자]
 카카오
@@ -205,7 +205,7 @@ export const JoinScreen: React.FC = () => {
                         )}
 
                         {renderCheckbox("카카오 개인정보 제3자 제공 동의", kakao3rdMandatory, () => setKakao3rdMandatory(!kakao3rdMandatory), true, () => openModal('[필수] 제3자 제공 동의', MANDATORY_3RD_PARTY_TEXT),
-                            "• 수집 항목: 이름(닉네임), 휴대폰번호, 카카오 ID\n• 이용 목적: 회원 식별 및 서비스 제공\n• 보유 기간: 회원 탈퇴 시까지"
+                            "• 수집 항목: 이름, 휴대폰번호, 카카오 ID\n• 이용 목적: 회원 식별 및 서비스 제공\n• 보유 기간: 회원 탈퇴 시까지"
                         )}
 
                         {renderCheckbox("카카오 개인정보 제3자 제공 동의", kakao3rdOptional, () => setKakao3rdOptional(!kakao3rdOptional), false, () => openModal('[선택] 제3자 제공 동의', OPTIONAL_3RD_PARTY_TEXT), "• 이메일, 프로필사진")}
