@@ -30,7 +30,7 @@ export const AddScheduleScreen: React.FC = () => {
     const [startTime, setStartTime] = useState(new Date());
     const [endTime, setEndTime] = useState(new Date(Date.now() + 3600000));
     const [selectedDays, setSelectedDays] = useState<string[]>(['월', '화', '수', '목', '금']);
-    const [lockType, setLockType] = useState('app');
+    const [lockType, setLockType] = useState('APP');
     const [lockedApps, setLockedApps] = useState<string[]>(UniversalAppMapper.getDefaultUniversalIds());
     const [editingId, setEditingId] = useState<string | null>(null);
 
@@ -68,7 +68,10 @@ export const AddScheduleScreen: React.FC = () => {
         if (schedule) {
             setName(schedule.name);
             setSelectedDays(schedule.days);
-            setLockType(schedule.lockType || 'app');
+            let normalizedType = (schedule.lockType || 'APP').toUpperCase();
+            if (normalizedType === 'PHONE') normalizedType = 'FULL';
+            if (normalizedType === 'APP_ONLY') normalizedType = 'APP';
+            setLockType(normalizedType);
 
             // Legacy/Missing apps check
             let resolvedApps = [];
@@ -205,7 +208,7 @@ export const AddScheduleScreen: React.FC = () => {
             startTime: `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`,
             endTime: `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`,
             days: selectedDays,
-            lockType,
+            lockType: lockType as any,
             lockedApps: lockedApps,
             isActive: true,
         };
@@ -242,7 +245,7 @@ export const AddScheduleScreen: React.FC = () => {
                 newSchedule.startTime,
                 newSchedule.endTime,
                 newSchedule.days,
-                newSchedule.lockType,
+                newSchedule.lockType as any,
                 newSchedule.name,
                 JSON.stringify(nativeLockedApps),
                 preventRemoval,
@@ -290,14 +293,14 @@ export const AddScheduleScreen: React.FC = () => {
         const timeWindow = `${startStr}-${endStr}`;
 
         setIsQRModalVisible(true);
-        const result = await QrService.generateQr(
-            'USER_SCHEDULE_LOCK',
-            cappedDuration,
-            targetName,
-            targetApps,
-            timeWindow,
-            targetDays
-        );
+        const result = await QrService.generateQr({
+            type: 'USER_SCHEDULE_LOCK',
+            duration_minutes: cappedDuration,
+            title: targetName,
+            blocked_apps: targetApps,
+            time_window: timeWindow,
+            days: targetDays
+        });
         if (result && result.payload) {
             setQrValue(result.payload);
         }
@@ -507,18 +510,18 @@ export const AddScheduleScreen: React.FC = () => {
                         <Typography variant="h2" bold style={styles.sectionTitle}>잠금 설정</Typography>
                         <View style={styles.lockTypeRow}>
                             <TouchableOpacity
-                                style={[styles.lockTypeButton, lockType === 'phone' && styles.lockTypeButtonActive]}
-                                onPress={() => setLockType('phone')}
+                                style={[styles.lockTypeButton, lockType === 'FULL' && styles.lockTypeButtonActive]}
+                                onPress={() => setLockType('FULL')}
                             >
-                                <Icon name="phone-portrait-outline" size={24} color={lockType === 'phone' ? Colors.primary : Colors.textSecondary} />
-                                <Typography bold color={lockType === 'phone' ? Colors.primary : Colors.textSecondary}>핸드폰 잠금</Typography>
+                                <Icon name="phone-portrait-outline" size={24} color={lockType === 'FULL' ? Colors.primary : Colors.textSecondary} />
+                                <Typography bold color={lockType === 'FULL' ? Colors.primary : Colors.textSecondary}>전체 잠금</Typography>
                             </TouchableOpacity>
                             <TouchableOpacity
-                                style={[styles.lockTypeButton, lockType === 'app' && styles.lockTypeButtonActive]}
-                                onPress={() => setLockType('app')}
+                                style={[styles.lockTypeButton, lockType === 'APP' && styles.lockTypeButtonActive]}
+                                onPress={() => setLockType('APP')}
                             >
-                                <Icon name="apps-outline" size={24} color={lockType === 'app' ? Colors.primary : Colors.textSecondary} />
-                                <Typography bold color={lockType === 'app' ? Colors.primary : Colors.textSecondary}>앱 잠금</Typography>
+                                <Icon name="apps-outline" size={24} color={lockType === 'APP' ? Colors.primary : Colors.textSecondary} />
+                                <Typography bold color={lockType === 'APP' ? Colors.primary : Colors.textSecondary}>앱 선택 잠금</Typography>
                             </TouchableOpacity>
                         </View>
                     </View>

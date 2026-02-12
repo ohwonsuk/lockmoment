@@ -10,7 +10,7 @@ import { AppSelectorModal } from './AppSelectorModal';
 interface Props {
     isVisible: boolean;
     onClose: () => void;
-    onConfirm: (hours: number, minutes: number, type: 'app' | 'phone', packagesJson?: string) => void;
+    onConfirm: (hours: number, minutes: number, type: 'APP' | 'FULL', packagesJson?: string) => void;
 }
 
 const isIOS = Platform.OS === 'ios';
@@ -19,7 +19,7 @@ export const QuickLockPicker: React.FC<Props> = ({ isVisible, onClose, onConfirm
     const [hours, setHours] = useState('1');
     const [minutes, setMinutes] = useState('00');
     // const [ampm, setAmpm] = useState('오후'); // Not used for duration
-    const [lockType, setLockType] = useState<'app' | 'phone'>('app');
+    const [lockType, setLockType] = useState<'APP' | 'FULL'>('APP');
 
     const [appAllowedCount, setAppAllowedCount] = useState(0);
     const [phoneAllowedCount, setPhoneAllowedCount] = useState(0);
@@ -63,14 +63,14 @@ export const QuickLockPicker: React.FC<Props> = ({ isVisible, onClose, onConfirm
             try {
                 const result = await NativeLockControl.presentFamilyActivityPicker(lockType);
                 if (typeof result === 'number') {
-                    if (lockType === 'phone') setPhoneAllowedCount(result);
+                    if (lockType === 'FULL') setPhoneAllowedCount(result);
                     else setAppAllowedCount(result);
                 }
             } catch (e) {
                 console.error(e);
             }
         } else {
-            if (lockType === 'app') {
+            if (lockType === 'APP') {
                 setIsAppSelectorVisible(true);
             }
         }
@@ -78,7 +78,7 @@ export const QuickLockPicker: React.FC<Props> = ({ isVisible, onClose, onConfirm
 
     const handleAndroidAppSelect = (pkgs: string[]) => {
         setSelectedPackages(pkgs);
-        if (lockType === 'phone') setPhoneAllowedCount(pkgs.length);
+        if (lockType === 'FULL') setPhoneAllowedCount(pkgs.length);
         else setAppAllowedCount(pkgs.length);
     };
 
@@ -91,16 +91,16 @@ export const QuickLockPicker: React.FC<Props> = ({ isVisible, onClose, onConfirm
             return;
         }
 
-        const needsSelection = Platform.OS === 'ios' || lockType === 'app';
+        const needsSelection = Platform.OS === 'ios' || lockType === 'APP';
         if (needsSelection) {
-            const currentCount = lockType === 'phone' ? phoneAllowedCount : appAllowedCount;
+            const currentCount = lockType === 'FULL' ? phoneAllowedCount : appAllowedCount;
             if (currentCount === 0) {
                 handleAppSelect();
                 return;
             }
         }
 
-        const packagesJson = Platform.OS === 'android' && lockType === 'app'
+        const packagesJson = Platform.OS === 'android' && lockType === 'APP'
             ? JSON.stringify(selectedPackages)
             : undefined;
 
@@ -113,39 +113,39 @@ export const QuickLockPicker: React.FC<Props> = ({ isVisible, onClose, onConfirm
                 <View style={styles.container}>
                     <View style={styles.typeSelector}>
                         <TouchableOpacity
-                            style={[styles.typeButton, lockType === 'app' && styles.typeButtonActive]}
-                            onPress={() => setLockType('app')}
+                            style={[styles.typeButton, lockType === 'APP' && styles.typeButtonActive]}
+                            onPress={() => setLockType('APP')}
                         >
-                            <Typography variant="body" bold={lockType === 'app'} color={lockType === 'app' ? Colors.text : Colors.textSecondary}>앱 잠금</Typography>
+                            <Typography variant="body" bold={lockType === 'APP'} color={lockType === 'APP' ? Colors.text : Colors.textSecondary}>앱 선택 잠금</Typography>
                         </TouchableOpacity>
                         <TouchableOpacity
-                            style={[styles.typeButton, lockType === 'phone' && styles.typeButtonActive]}
-                            onPress={() => setLockType('phone')}
+                            style={[styles.typeButton, lockType === 'FULL' && styles.typeButtonActive]}
+                            onPress={() => setLockType('FULL')}
                         >
-                            <Typography variant="body" bold={lockType === 'phone'} color={lockType === 'phone' ? Colors.text : Colors.textSecondary}>{phoneLabel}</Typography>
+                            <Typography variant="body" bold={lockType === 'FULL'} color={lockType === 'FULL' ? Colors.text : Colors.textSecondary}>전체 잠금</Typography>
                         </TouchableOpacity>
                     </View>
 
                     <TouchableOpacity
                         style={styles.appSelector}
                         onPress={handleAppSelect}
-                        disabled={Platform.OS === 'android' && lockType === 'phone'}
+                        disabled={Platform.OS === 'android' && lockType === 'FULL'}
                     >
                         <View style={{ flex: 1 }}>
                             <Typography style={styles.appSelectorText}>
-                                {lockType === 'phone'
+                                {lockType === 'FULL'
                                     ? (Platform.OS === 'android'
                                         ? "핸드폰 전체 사용불가"
-                                        : (phoneAllowedCount > 0 ? `${phoneAllowedCount}개 카테고리/앱 선택됨` : `모든 앱 잠금 설정 (${isPad ? '패드' : '폰'} 전체)`))
-                                    : (appAllowedCount > 0 ? `${appAllowedCount}개 항목 선택됨` : "잠글 앱 선택하기")}
+                                        : (phoneAllowedCount > 0 ? `${phoneAllowedCount}개 항목 선택됨` : "허용할 앱/카테고리 선택"))
+                                    : (appAllowedCount > 0 ? `${appAllowedCount}개 항목 선택됨` : "잠글 앱/카테고리 선택")}
                             </Typography>
                             <Typography variant="caption" color={Colors.textSecondary} style={{ fontSize: 10, marginTop: 2 }}>
-                                {lockType === 'phone'
-                                    ? (Platform.OS === 'android' ? "* 전화/메시지/락모먼트 앱은 제외" : "* 전체 앱을 잠그려면 설정에서 모든 카테고리를 선택해주세요.")
-                                    : "* 전화/메시지 앱은 잠금 목록에서 제외 권장"}
+                                {lockType === 'FULL'
+                                    ? (Platform.OS === 'android' ? "* 전화/메시지/락모먼트 앱은 제외" : "* 전체 잠금을 원하시면 모든 항목을 선택해주세요.")
+                                    : "* 선택한 앱들만 잠금 대상이 됩니다."}
                             </Typography>
                         </View>
-                        {!(Platform.OS === 'android' && lockType === 'phone') && (
+                        {!(Platform.OS === 'android' && lockType === 'FULL') && (
                             <Typography variant="caption" color={Colors.primary} bold>설정</Typography>
                         )}
                     </TouchableOpacity>

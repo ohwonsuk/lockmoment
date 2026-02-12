@@ -2,14 +2,18 @@ import { apiService } from './ApiService';
 import { AuthService } from './AuthService';
 
 export interface QrGenerateRequest {
-    type: 'CLASS_ATTEND' | 'USER_INSTANT_LOCK' | 'USER_SCHEDULE_LOCK' | 'CHILD_REGISTRATION';
-    ref_id: string; // class_id, device_id, etc.
-    lock_duration_minutes?: number;
+    type?: 'CLASS_ATTEND' | 'USER_INSTANT_LOCK' | 'USER_SCHEDULE_LOCK' | 'CHILD_REGISTRATION';
+    purpose?: 'LOCK_ONLY' | 'ATTENDANCE_ONLY' | 'LOCK_AND_ATTENDANCE';
+    preset_id?: string;
+    target_type?: 'STUDENT' | 'CLASS';
+    target_id?: string;
+    duration_minutes?: number;
     title?: string;
     blocked_apps?: string[];
     time_window?: string;
     days?: string[];
     one_time?: boolean;
+    max_uses?: number;
 }
 
 export interface QrGenerateResponse {
@@ -37,26 +41,18 @@ export interface QrScanResponse {
 }
 
 export class QrService {
-    static async generateQr(
-        type: 'CLASS_ATTEND' | 'USER_INSTANT_LOCK' | 'USER_SCHEDULE_LOCK' | 'CHILD_REGISTRATION' = 'USER_INSTANT_LOCK',
-        duration: number = 60,
-        title?: string,
-        blockedApps?: string[],
-        timeWindow?: string,
-        days?: string[]
-    ): Promise<QrGenerateResponse | null> {
+    /**
+     * QR 코드 생성
+     * @param options - QR 생성 옵션
+     */
+    static async generateQr(options: QrGenerateRequest): Promise<QrGenerateResponse | null> {
         try {
             const deviceData = await AuthService.getDeviceData();
 
             const response = await apiService.post<QrGenerateResponse>('/qr/generate', {
-                type,
+                ...options,
                 device_id: deviceData.deviceId,
-                duration_minutes: duration,
-                title: title,
-                blocked_apps: blockedApps,
-                time_window: timeWindow,
-                days: days,
-                one_time: type === 'USER_INSTANT_LOCK'
+                one_time: options.one_time ?? options.type === 'USER_INSTANT_LOCK'
             });
 
             return response;

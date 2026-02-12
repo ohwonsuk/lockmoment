@@ -13,6 +13,8 @@ import { NativeLockControl } from '../services/NativeLockControl';
 import { UniversalAppMapper } from '../services/UniversalAppMapper';
 import { CameraRoll } from "@react-native-camera-roll/camera-roll";
 import NSSHARE from 'react-native-share';
+import { PresetService, Preset } from '../services/PresetService';
+import { PresetItem } from '../components/PresetItem';
 
 import { useAppNavigation } from '../navigation/NavigationContext';
 
@@ -31,6 +33,11 @@ export const QRGeneratorScreen: React.FC = () => {
     const [duration, setDuration] = useState(params.duration || 60);
     const [selectedApps, setSelectedApps] = useState<string[]>(params.apps || UniversalAppMapper.getDefaultUniversalIds());
     const [qrValue, setQrValue] = useState('');
+
+    // Preset State
+    const [presets, setPresets] = useState<Preset[]>([]);
+    const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
+    const [isLoadingPresets, setIsLoadingPresets] = useState(false);
 
     // Child Selection
     const [children, setChildren] = useState<ChildInfo[]>([]);
@@ -53,12 +60,41 @@ export const QRGeneratorScreen: React.FC = () => {
     }, []);
 
     const loadData = async () => {
-        const data = await ParentChildService.getLinkedChildren();
-        setChildren(data);
-        if (data.length > 0 && !params.childId) {
-            // setSelectedChildId(data[0].id); // Default to first child or keep 'all'
+        setIsLoadingPresets(true);
+        try {
+            const [childrenData, systemPresets] = await Promise.all([
+                ParentChildService.getLinkedChildren(),
+                PresetService.getPresets('SYSTEM')
+            ]);
+
+            setChildren(childrenData);
+            setPresets(systemPresets);
+
+            // 초기 Preset 선택 (수업 집중 등)
+            if (systemPresets.length > 0) {
+                // handlePresetSelect(systemPresets[0]); // 선택적으로 활성화
+            }
+        } catch (error) {
+            console.error("[QRGenerator] Load Data Failed:", error);
+        } finally {
+            setIsLoadingPresets(false);
+            generateQR();
         }
-        generateQR();
+    };
+
+    const handlePresetSelect = (preset: Preset) => {
+        setSelectedPresetId(preset.id);
+        setLockTitle(preset.name);
+
+        if (preset.default_duration_minutes) {
+            setDuration(preset.default_duration_minutes);
+        }
+
+        if (preset.allowed_apps && preset.allowed_apps.length > 0) {
+            setSelectedApps(preset.allowed_apps);
+        } else if (preset.lock_type === 'FULL') {
+            setSelectedApps([]); // 전체 잠금인 경우 앱 목록 비움
+        }
     };
 
     const generateQR = async () => {
@@ -80,14 +116,17 @@ export const QRGeneratorScreen: React.FC = () => {
                 finalDuration = diff > 0 ? diff : (24 * 60 + diff);
             }
 
-            const result = await QrService.generateQr(
+            const result = await QrService.generateQr({
                 type,
-                finalDuration,
-                lockTitle,
-                selectedApps,
-                timeWindow,
-                days
-            );
+                purpose: presets.find(p => p.id === selectedPresetId)?.purpose,
+                preset_id: selectedPresetId || undefined,
+                duration_minutes: finalDuration,
+                title: lockTitle,
+                blocked_apps: qrType === 'INSTANT' ? selectedApps : undefined, // 스케줄은 정책 기반일 확률이 높음
+                time_window: timeWindow,
+                days: days,
+                one_time: type === 'USER_INSTANT_LOCK'
+            });
 
             if (result && result.success) {
                 // Add target child info to payload if needed by scanner,
@@ -268,6 +307,27 @@ export const QRGeneratorScreen: React.FC = () => {
                 >
                     <Typography bold={qrType === 'SCHEDULED'} color={qrType === 'SCHEDULED' ? Colors.primary : Colors.textSecondary}>예약 잠금</Typography>
                 </TouchableOpacity>
+            </View>
+
+            <View style={styles.presetSection}>
+                <View style={styles.sectionHeader}>
+                    <Typography bold>Preset 선택</Typography>
+                    <Typography variant="caption" color={Colors.textSecondary}>원하는 상황을 선택하세요</Typography>
+                </View>
+                <FlatList
+                    horizontal
+                    data={presets}
+                    keyExtractor={(item) => item.id}
+                    renderItem={({ item }) => (
+                        <PresetItem
+                            preset={item}
+                            isSelected={selectedPresetId === item.id}
+                            onPress={handlePresetSelect}
+                        />
+                    )}
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.presetList}
+                />
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -517,6 +577,9 @@ const styles = StyleSheet.create({
     tabContainer: { flexDirection: 'row', backgroundColor: Colors.card, marginHorizontal: 20, marginTop: 10, borderRadius: 12, padding: 4 },
     tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
     activeTab: { backgroundColor: Colors.background, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+    presetSection: { width: '100%', paddingVertical: 10, paddingLeft: 20 },
+    sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
+    presetList: { paddingRight: 20 },
     scrollContent: { padding: 20, alignItems: 'center' },
     configContainer: { width: '100%', backgroundColor: Colors.card, padding: 16, borderRadius: 20, marginBottom: 20, borderWidth: 1, borderColor: Colors.border },
     inputGroup: { marginBottom: 16 },

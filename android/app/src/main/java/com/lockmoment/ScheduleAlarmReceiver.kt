@@ -10,7 +10,7 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
         Log.d("ScheduleAlarmReceiver", "Alarm triggered")
         
         val scheduleId = intent.getStringExtra("scheduleId") ?: return
-        val lockType = intent.getStringExtra("lockType") ?: "app"
+        val lockType = intent.getStringExtra("lockType") ?: "FULL"
         val lockName = intent.getStringExtra("lockName") ?: "예약 잠금"
         val durationMs = intent.getLongExtra("durationMs", 0)
         val allowedPackage = intent.getStringExtra("allowedPackage")

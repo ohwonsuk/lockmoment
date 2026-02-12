@@ -13,6 +13,8 @@ import { useAlert } from '../context/AlertContext';
 import { WeeklySchedule } from '../components/WeeklySchedule';
 import { AuthService } from '../services/AuthService';
 import { ParentChildService, ChildInfo } from '../services/ParentChildService';
+import { PresetService, Preset } from '../services/PresetService';
+import { PresetItem } from '../components/PresetItem';
 
 export const DashboardScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
@@ -26,6 +28,8 @@ export const DashboardScreen: React.FC = () => {
     const [children, setChildren] = useState<ChildInfo[]>([]);
     const [userRole, setUserRole] = useState<string>('STUDENT');
     const [viewMode, setViewMode] = useState<'PERSONAL' | 'ADMIN'>('PERSONAL');
+    const [recommendedPresets, setRecommendedPresets] = useState<Preset[]>([]);
+    const [isApplyingPreset, setIsApplyingPreset] = useState(false);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     useEffect(() => {
@@ -73,7 +77,13 @@ export const DashboardScreen: React.FC = () => {
         updateStatus();
         if (userRole === 'PARENT' || userRole === 'TEACHER') {
             loadChildren();
+            loadPresets();
         }
+    };
+
+    const loadPresets = async () => {
+        const presets = await PresetService.getRecommendedPresets();
+        setRecommendedPresets(presets);
     };
 
     const loadChildren = async () => {
@@ -115,7 +125,7 @@ export const DashboardScreen: React.FC = () => {
         setIsPickerVisible(true);
     };
 
-    const handleQuickLockConfirm = async (h: number, m: number, type: 'app' | 'phone', packagesJson?: string) => {
+    const handleQuickLockConfirm = async (h: number, m: number, type: 'APP' | 'FULL', packagesJson?: string) => {
         setIsPickerVisible(false);
         try {
             const prevent = await StorageService.getPreventAppRemoval();
@@ -147,9 +157,13 @@ export const DashboardScreen: React.FC = () => {
                 await NativeLockControl.cancelAlarm(id);
             } else {
                 const prevent = await StorageService.getPreventAppRemoval();
+                let normalizedType = (schedule.lockType || 'APP').toUpperCase();
+                if (normalizedType === 'PHONE') normalizedType = 'FULL';
+                if (normalizedType === 'APP_ONLY') normalizedType = 'APP';
+
                 await NativeLockControl.scheduleAlarm(
                     id, schedule.startTime, schedule.endTime, schedule.days,
-                    schedule.lockType || 'app', schedule.name,
+                    normalizedType as any, schedule.name,
                     JSON.stringify(schedule.lockedApps || []), prevent
                 );
             }
@@ -161,6 +175,42 @@ export const DashboardScreen: React.FC = () => {
     const handleGenerateScheduleQR = (id: string) => {
         (globalThis as any).editingScheduleId = id;
         navigate('AddSchedule' as any, { showQR: true });
+    };
+
+    const handleApplyPreset = async (preset: Preset) => {
+        if (children.length === 0) {
+            showAlert({ title: "알림", message: "잠금을 적용할 연결된 자녀가 없습니다." });
+            return;
+        }
+
+        showAlert({
+            title: "Preset 즉시 적용",
+            message: `[${preset.name}] 정책을 모든 자녀에게 즉시 적용하시겠습니까?`,
+            confirmText: "적용",
+            cancelText: "취소",
+            onConfirm: async () => {
+                setIsApplyingPreset(true);
+                try {
+                    let successCount = 0;
+                    for (const child of children) {
+                        const res = await PresetService.applyPreset(preset.id, {
+                            target_type: 'STUDENT',
+                            target_id: child.id,
+                        });
+                        if (res.success) successCount++;
+                    }
+                    showAlert({
+                        title: "적용 완료",
+                        message: `${successCount}명의 자녀에게 [${preset.name}] 정책이 적용되었습니다.`
+                    });
+                } catch (error) {
+                    console.error("Apply Preset Failed:", error);
+                    showAlert({ title: "오류", message: "Preset 적용 중 오류가 발생했습니다." });
+                } finally {
+                    setIsApplyingPreset(false);
+                }
+            }
+        });
     };
 
     const formatTime = (ms: number) => {
@@ -192,6 +242,25 @@ export const DashboardScreen: React.FC = () => {
 
             {viewMode === 'ADMIN' ? (
                 <ScrollView style={styles.flex1} contentContainerStyle={styles.scrollContent}>
+                    {/* 추천 Preset 섹션 추가 */}
+                    {recommendedPresets.length > 0 && (
+                        <View style={styles.presetSection}>
+                            <View style={styles.sectionHeader}>
+                                <Typography bold>추천 Preset 빠른 적용</Typography>
+                                <Icon name="flash" size={16} color="#FFD700" />
+                            </View>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.presetList}>
+                                {recommendedPresets.map(preset => (
+                                    <PresetItem
+                                        key={preset.id}
+                                        preset={preset}
+                                        onPress={handleApplyPreset}
+                                    />
+                                ))}
+                            </ScrollView>
+                        </View>
+                    )}
+
                     <View style={styles.adminGrid}>
                         <AdminMenuItem
                             icon="qr-code-outline"
@@ -607,5 +676,14 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    presetSection: {
+        width: '100%',
+        paddingVertical: 10,
+        paddingBottom: 20,
+    },
+    presetList: {
+        paddingHorizontal: 20,
+        gap: 12,
     },
 });

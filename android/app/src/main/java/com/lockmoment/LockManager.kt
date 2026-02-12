@@ -87,10 +87,16 @@ class LockManager private constructor(private val context: Context) {
     }
 
     // Updated signature: packagesJson contains either allowed package (legacy) or list of blocked packages
-    fun startLock(durationMs: Long, type: String = "app", name: String = "바로 잠금", packagesJson: String? = null, preventRemoval: Boolean = false) {
+    fun startLock(durationMs: Long, type: String = "FULL", name: String = "바로 잠금", packagesJson: String? = null, preventRemoval: Boolean = false) {
         currentLockStartTime = System.currentTimeMillis()
         endTime = currentLockStartTime + durationMs
-        lockType = type
+        
+        // Normalize type
+        lockType = when(type.uppercase()) {
+            "APP", "APP_ONLY" -> "APP"
+            else -> "FULL"
+        }
+        
         currentLockName = name
         isLocked = true
         preventAppRemoval = preventRemoval
@@ -99,7 +105,7 @@ class LockManager private constructor(private val context: Context) {
         blockedPackages.clear()
         dynamicAllowedPackage = null
 
-        if (type == "app") {
+        if (lockType == "APP") {
             // Blacklist mode: parse blocked packages
             if (packagesJson != null) {
                 try {
@@ -109,8 +115,7 @@ class LockManager private constructor(private val context: Context) {
                         for (i in 0 until jsonArray.length()) {
                             blockedPackages.add(jsonArray.getString(i))
                         }
-                    } else {
-                        // Legacy single package blacklist? Or maybe treat as single item
+                    } else if (packagesJson.isNotEmpty()) {
                         blockedPackages.add(packagesJson)
                     }
                 } catch (e: Exception) {
@@ -118,10 +123,8 @@ class LockManager private constructor(private val context: Context) {
                 }
             }
         } else {
-            // Phone mode (Whitelist): treat packagesJson as single allowed package (dynamicAllowedPackage) if needed
-            // Currently phone mode is strict, maybe we allow one extra app?
-            // Legacy behavior used allowedPackage string.
-            if (packagesJson != null && !packagesJson.startsWith("[")) {
+            // FULL (Whitelist) mode: handle legacy allowedPackage if provided
+            if (packagesJson != null && !packagesJson.startsWith("[") && packagesJson.isNotEmpty()) {
                 dynamicAllowedPackage = packagesJson
             }
         }
@@ -208,39 +211,53 @@ class LockManager private constructor(private val context: Context) {
     }
 
     fun isPackageAllowed(packageName: String): Boolean {
-        // Always allow LockMoment and critical components
+        // ALWAYS ALLOW: LockMoment and critical Android components
         if (packageName == "com.lockmoment") return true
         if (packageName == "com.android.systemui") return true
-        
-        if (lockType == "app") {
-            // Blacklist mode: Block if in blockedPackages
+        if (packageName == "android") return true
+
+        // Mode specific logic
+        if (lockType == "APP") {
+            // APP Mode (Blacklist): Block only if explicitly listed
             if (blockedPackages.contains(packageName)) return false
             return true
         } else {
-            // Phone mode (Whitelist)
+            // FULL Mode (Whitelist): Only allow essential apps
+            
+            // 1. Critical System Apps
             if (packageName == "com.android.settings" ||
                 packageName == "com.android.phone" ||
                 packageName == "com.android.server.telecom" ||
-                packageName.contains("incallui")) {
+                packageName.contains("incallui") ||
+                packageName.contains("telephony")) {
                 return true
             }
             
+            // 2. Default Apps (Dialer, SMS) - Allowed by policy for safety
+            if (packageName == defaultDialerPkg || packageName == defaultSmsPkg) {
+                return true
+            }
+            
+            // 3. Dynamic allowed app (Set via JS)
             if (dynamicAllowedPackage != null && packageName == dynamicAllowedPackage) return true
 
+            // 4. Input & Foundation
             if (packageName.contains("keyboard") || 
-                packageName.contains("telephony") ||
                 packageName.contains("inputmethod")) {
                 return true
             }
-            
+
+            // 5. Hardcoded critical system apps
             if (allowedPackages.contains(packageName)) {
                 return true
             }
 
+            // 6. Home / Launcher (To avoid black screen, though Accessibility will overlay anyway)
             if (packageName.contains("launcher") || packageName.contains("home")) {
                 return true
             }
 
+            // 7. Contacts
             if (packageName.contains("contact")) {
                 return true
             }
@@ -267,7 +284,7 @@ class LockManager private constructor(private val context: Context) {
         val savedEndTime = prefs.getLong("endTime", 0)
         if (savedEndTime > System.currentTimeMillis()) {
             endTime = savedEndTime
-            lockType = prefs.getString("lockType", "app") ?: "app"
+            lockType = (prefs.getString("lockType", "FULL") ?: "FULL").uppercase()
             currentLockName = prefs.getString("lockName", "바로 잠금") ?: "바로 잠금"
             currentLockStartTime = prefs.getLong("startTime", System.currentTimeMillis())
             preventAppRemoval = prefs.getBoolean("preventAppRemoval", false)

@@ -82,19 +82,37 @@ class LockModel: ObservableObject {
         }
     }
     
-    func startLock(duration: Double = 0, type: String = "app", name: String = "바로 잠금", preventRemoval: Bool = false) {
-        self.currentType = type
+    func startLock(duration: Double = 0, lockType: String = "FULL", name: String = "바로 잠금", preventRemoval: Bool = false) {
+        // Normalize type
+        let normalizedType = lockType.uppercased() == "APP" ? "APP" : "FULL"
+        self.currentType = normalizedType
         self.currentLockName = name
         self.startTime = Date()
         
         UserDefaults.standard.set(name, forKey: "currentLockName")
         UserDefaults.standard.set(startTime, forKey: "lockStartTime")
+        UserDefaults.standard.set(normalizedType, forKey: "lockType")
         
-        let sel = type == "phone" ? phoneSelection : appSelection
+        let sel = normalizedType == "APP" ? appSelection : phoneSelection
         
-        // Apply shielding to the selected applications and categories
-        store.shield.applications = sel.applicationTokens
-        store.shield.applicationCategories = ShieldSettings.ActivityCategoryPolicy.specific(sel.categoryTokens)
+        if normalizedType == "FULL" {
+            // FULL Mode: Shield all applications but respect individual specific categories if selected
+            // However, ManagedSettings doesn't have a simple "Shield Everything Except" mode.
+            // The policy says: "허용 앱 외 전부 Shield = Full Lock"
+            // So we use .all but allow specific tokens to be excluded if possible?
+            // Actually, ShieldSettings.ActivityCategoryPolicy.all shields all.
+            // For a true "Whitelist" we'd need to set all but then exclude? 
+            // ManagedSettingsShield doesn't easily support "Shield All Except X".
+            // Alternative: Add allCategories to shield and then we'd need a shield extension to allow through.
+            // But for now, we follow the user's policy: "Shield all apps/categories"
+            store.shield.applications = .all
+            store.shield.applicationCategories = .all
+        } else {
+            // APP Mode: Specific categories and apps from selection
+            store.shield.applications = sel.applicationTokens
+            store.shield.applicationCategories = ShieldSettings.ActivityCategoryPolicy.specific(sel.categoryTokens)
+        }
+        
         store.shield.webDomainCategories = ShieldSettings.ActivityCategoryPolicy.specific(sel.categoryTokens)
         
         // Apply app removal prevention if requested
@@ -111,7 +129,7 @@ class LockModel: ObservableObject {
             UserDefaults.standard.set(end, forKey: "lockEndTime")
         } else {
             self.endTime = nil
-             UserDefaults.standard.removeObject(forKey: "lockEndTime")
+            UserDefaults.standard.removeObject(forKey: "lockEndTime")
         }
     }
     

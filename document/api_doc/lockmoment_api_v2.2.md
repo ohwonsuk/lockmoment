@@ -160,7 +160,7 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
 ## 📋 Preset 정책 API
 
 ### 4. Preset 목록 조회
-`GET /presets?scope=SYSTEM|ORG|USER`
+`GET /presets?scope=SYSTEM|ORG|USER&purpose=LOCK_ONLY|ATTENDANCE_ONLY|LOCK_AND_ATTENDANCE`
 
 **Response**:
 ```json
@@ -174,13 +174,58 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
       "purpose": "LOCK_ONLY",
       "lock_type": "FULL",
       "default_duration_minutes": 60,
-      "blocked_categories": ["Social", "Games"]
+      "allowed_categories": ["EDUCATION"],
+      "blocked_categories": ["SOCIAL", "GAMES"],
+      "isActive": true
     }
   ]
 }
 ```
 
-### 5. Preset 적용
+### 5. Preset 상세 조회
+`GET /presets/{presetId}`
+
+**Response**:
+```json
+{
+  "success": true,
+  "preset": {
+    "id": "uuid",
+    "scope": "USER",
+    "name": "집중 학습",
+    "purpose": "LOCK_AND_ATTENDANCE",
+    "lock_type": "APP_ONLY",
+    "allowed_categories": ["EDUCATION"],
+    "blocked_categories": ["GAMES"],
+    "allowed_apps": ["com.apple.calculator"],
+    "default_duration_minutes": 120
+  }
+}
+```
+
+### 6. Preset 생성
+`POST /presets`
+
+**Request Body**:
+```json
+{
+  "scope": "USER",
+  "name": "시험 공부",
+  "purpose": "LOCK_ONLY",
+  "lock_type": "FULL",
+  "default_duration_minutes": 60
+}
+```
+
+### 7. Preset 비활성화
+`PATCH /presets/{presetId}/deactivate`
+
+**Response**:
+```json
+{ "success": true }
+```
+
+### 8. Preset 적용
 `POST /presets/{presetId}/apply`
 
 **Request**:
@@ -192,6 +237,34 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
   "overrides": {
     "allowed_apps": ["com.apple.calculator"]
   }
+}
+```
+
+### 9. Preset 사용 이력 조회
+`GET /presets/{presetId}/usage`
+
+**Response**:
+```json
+{
+  "success": true,
+  "usage": [
+    {
+      "target_type": "CLASS",
+      "target_id": "uuid",
+      "applied_at": "2026-02-12T10:00:00Z"
+    }
+  ]
+}
+```
+
+### 10. 추천 Preset 조회
+`GET /presets/recommended`
+
+**Response**:
+```json
+{
+  "success": true,
+  "presets": [...]
 }
 ```
 
