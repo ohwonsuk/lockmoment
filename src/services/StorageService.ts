@@ -215,5 +215,26 @@ export const StorageService = {
         } catch (e) {
             console.error('Failed to save permissions guided flag', e);
         }
+    },
+
+    async getUserProfile(): Promise<any | null> {
+        try {
+            const data = await AsyncStorage.getItem('@lockmoment_user_profile');
+            return data ? JSON.parse(data) : null;
+        } catch (e) {
+            return null;
+        }
+    },
+
+    async setUserProfile(profile: any): Promise<void> {
+        try {
+            if (profile) {
+                await AsyncStorage.setItem('@lockmoment_user_profile', JSON.stringify(profile));
+            } else {
+                await AsyncStorage.removeItem('@lockmoment_user_profile');
+            }
+        } catch (e) {
+            console.error('Failed to save user profile', e);
+        }
     }
 };

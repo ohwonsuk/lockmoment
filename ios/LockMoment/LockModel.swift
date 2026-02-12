@@ -105,8 +105,9 @@ class LockModel: ObservableObject {
             // ManagedSettingsShield doesn't easily support "Shield All Except X".
             // Alternative: Add allCategories to shield and then we'd need a shield extension to allow through.
             // But for now, we follow the user's policy: "Shield all apps/categories"
-            store.shield.applications = .all
-            store.shield.applicationCategories = .all
+            // store.shield.applications does not support .all. Rely on categories to block everything.
+            store.shield.applications = nil 
+            store.shield.applicationCategories = .all()
         } else {
             // APP Mode: Specific categories and apps from selection
             store.shield.applications = sel.applicationTokens

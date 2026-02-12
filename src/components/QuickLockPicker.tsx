@@ -135,14 +135,14 @@ export const QuickLockPicker: React.FC<Props> = ({ isVisible, onClose, onConfirm
                             <Typography style={styles.appSelectorText}>
                                 {lockType === 'FULL'
                                     ? (Platform.OS === 'android'
-                                        ? "핸드폰 전체 사용불가"
-                                        : (phoneAllowedCount > 0 ? `${phoneAllowedCount}개 항목 선택됨` : "허용할 앱/카테고리 선택"))
-                                    : (appAllowedCount > 0 ? `${appAllowedCount}개 항목 선택됨` : "잠글 앱/카테고리 선택")}
+                                        ? "모든 앱 사용 불가"
+                                        : (phoneAllowedCount > 0 ? `${phoneAllowedCount}개 예외 앱 선택됨` : "항상 허용할 앱 선택"))
+                                    : (appAllowedCount > 0 ? `${appAllowedCount}개 앱 선택됨` : "잠글 앱 선택")}
                             </Typography>
                             <Typography variant="caption" color={Colors.textSecondary} style={{ fontSize: 10, marginTop: 2 }}>
                                 {lockType === 'FULL'
-                                    ? (Platform.OS === 'android' ? "* 전화/메시지/락모먼트 앱은 제외" : "* 전체 잠금을 원하시면 모든 항목을 선택해주세요.")
-                                    : "* 선택한 앱들만 잠금 대상이 됩니다."}
+                                    ? (Platform.OS === 'android' ? "* 전화/메시지/기본 앱은 제외됩니다." : "* 선택한 앱을 제외한 모든 앱이 잠깁니다.")
+                                    : "* 선택한 앱만 잠깁니다."}
                             </Typography>
                         </View>
                         {!(Platform.OS === 'android' && lockType === 'FULL') && (

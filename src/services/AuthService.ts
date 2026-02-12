@@ -108,6 +108,10 @@ export class AuthService {
                     console.log("[AuthService] User role saved:", response.user.role);
                 }
 
+                if (response.user) {
+                    await StorageService.setUserProfile(response.user);
+                }
+
                 // 3. Sync Device Info
                 console.log("[AuthService] Syncing device...");
                 await this.syncDevice();
@@ -222,6 +226,10 @@ export class AuthService {
                     console.log("[AuthService] User role saved:", response.user.role);
                 }
 
+                if (response.user) {
+                    await StorageService.setUserProfile(response.user);
+                }
+
                 // 디바이스 동기화
                 console.log("[AuthService] Syncing device...");
                 await this.syncDevice();
@@ -266,6 +274,10 @@ export class AuthService {
                     await StorageService.setUserRole(response.user.role);
                 }
 
+                if (response.user) {
+                    await StorageService.setUserProfile(response.user);
+                }
+
                 // 디바이스 동기화
                 await this.syncDevice();
 
@@ -305,6 +317,10 @@ export class AuthService {
                 }
                 if (response.user?.role) {
                     await StorageService.setUserRole(response.user.role);
+                }
+
+                if (response.user) {
+                    await StorageService.setUserProfile(response.user);
                 }
 
                 return {
@@ -390,9 +406,14 @@ export class AuthService {
             await StorageService.setAccessToken(null);
             await StorageService.setRefreshToken(null);
             await StorageService.setUserRole(null);
+            await StorageService.setUserProfile(null);
             console.log("[AuthService] Logged out successfully");
         } catch (error) {
             console.error("[AuthService] Logout failed:", error);
         }
+    }
+
+    static async getUserProfile(): Promise<UserInfo | any> {
+        return await StorageService.getUserProfile();
     }
 }
