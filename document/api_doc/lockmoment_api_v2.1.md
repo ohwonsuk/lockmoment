@@ -497,3 +497,72 @@ Base URL: https://18gffqu5rb.execute-api.ap-northeast-2.amazonaws.com
 
 **Last Updated**: 2026-02-08
 **API Version**: 2.1.0
+
+
+
+## 🔹 Preset 목록 조회
+
+```http
+GET /presets?scope=SYSTEM,ORG,USER
+Authorization: Bearer
+```
+
+### Response
+
+```json
+[
+  {
+    "id": "uuid",
+    "name": "수업 집중",
+    "description": "...",
+    "lockType": "APP_ONLY",
+    "allowedCategories": ["EDUCATION"],
+    "editable": false
+  }
+]
+```
+
+---
+
+## 🔹 Preset 적용 → Lock Policy 생성
+
+```http
+POST /presets/{presetId}/apply
+```
+
+### Body
+
+```json
+{
+  "targetType": "CLASS",
+  "targetId": "class_uuid",
+  "durationMinutes": 90,
+  "overrides": {
+    "allowedApps": ["com.calculator"]
+  }
+}
+```
+
+### Server
+
+- Preset + override 병합
+- lock_policies 생성
+- 반환
+
+---
+
+## 🔹 사용자 Preset 저장
+
+```http
+POST /presets
+```
+
+```json
+{
+  "basePresetId": "system_uuid",
+  "name": "우리반 시험모드",
+  "allowedCategories": ["EDUCATION"],
+  "blockedCategories": ["ALL"],
+  "lockType": "FULL"
+}
+```

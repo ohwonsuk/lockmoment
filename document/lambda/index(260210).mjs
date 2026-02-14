@@ -726,10 +726,42 @@ export const handler = async (event) => {
         // POST /qr/scan - QR 스캔 (JWT 불필요)
         if (httpMethod === 'POST' && path === '/qr/scan') {
             const { qrPayload, deviceId } = data;
-            const { qr_id, exp, sig } = JSON.parse(qrPayload);
+            const parsedPayload = JSON.parse(qrPayload);
+            const { type, sig, exp, qrId } = parsedPayload;
+
+            // 1. 등록/연결용 QR (Stateless) 처리
+            if (type === 'CHILD_REGISTRATION' || type === 'PARENT_LINK') {
+                // 서명 검증 (전체 페이로드 HMAC)
+                const { sig: _, ...payloadWithoutSig } = parsedPayload;
+                const expectedSig = crypto.createHmac('sha256', QR_SECRET_KEY)
+                    .update(JSON.stringify(payloadWithoutSig))
+                    .digest('hex');
+
+                if (expectedSig !== sig) {
+                    return response(401, { success: false, message: '위변조된 QR 코드입니다 (R)' });
+                }
+
+                if (exp < Math.floor(Date.now() / 1000)) {
+                    return response(400, { success: false, message: '만료된 QR 코드입니다' });
+                }
+
+                // 등록 정보 반환
+                return response(200, {
+                    success: true,
+                    registrationInfo: {
+                        parentId: parsedPayload.issuerId,
+                        parentName: parsedPayload.issuerName,
+                        childName: 'Target Child' // 클라이언트에서 입력받거나 설정?
+                    }
+                });
+            }
+
+            // 2. 일반 잠금/출석 QR (Stateful) 처리
+            const { qr_id } = parsedPayload;
+            const qrIdToUse = qr_id || qrId;
 
             // HMAC 검증
-            if (generateHMAC(qr_id, exp) !== sig) {
+            if (generateHMAC(qrIdToUse, exp) !== sig) {
                 return response(401, { success: false, message: '위변조된 QR 코드입니다' });
             }
 

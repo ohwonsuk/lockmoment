@@ -9,6 +9,7 @@ import { useAppNavigation } from '../navigation/NavigationContext';
 import { StorageService } from '../services/StorageService';
 import { NativeLockControl } from '../services/NativeLockControl';
 import { QrService, QrScanResponse } from '../services/QrService';
+import { ParentChildService } from '../services/ParentChildService';
 import { UniversalAppMapper } from '../services/UniversalAppMapper';
 import { Platform } from 'react-native';
 
@@ -22,6 +23,7 @@ export const QRScannerScreen: React.FC = () => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [scanResult, setScanResult] = useState<QrScanResponse['lockPolicy'] | null>(null);
     const [registrationInfo, setRegistrationInfo] = useState<QrScanResponse['registrationInfo'] | null>(null);
+    const [rawQrData, setRawQrData] = useState<string | null>(null);
     const [isConfirmModalVisible, setIsConfirmModalVisible] = useState(false);
     const [isRegistrationModalVisible, setIsRegistrationModalVisible] = useState(false);
     const [isApplying, setIsApplying] = useState(false);
@@ -57,6 +59,7 @@ export const QRScannerScreen: React.FC = () => {
 
     const handleScannedData = async (data: string) => {
         setIsProcessing(true);
+        setRawQrData(data);
         try {
             console.log("Processing QR:", data);
 
@@ -108,25 +111,43 @@ export const QRScannerScreen: React.FC = () => {
     };
 
     const handleConfirmRegistration = async () => {
-        if (!registrationInfo) return;
+        if (!registrationInfo || !rawQrData) return;
         setIsApplying(true);
         try {
-            // Call API to complete the parent-child matching
-            // In a real scenario, this would involve sending device info (UUID, Name, etc.)
-            // For now, we simulate success
-            await new Promise<void>(resolve => setTimeout(() => resolve(), 1500));
+            console.log("Linking with payload:", rawQrData);
+            const response = await ParentChildService.linkChild(rawQrData);
 
             setIsRegistrationModalVisible(false);
-            Alert.alert(
-                "등록 완료",
-                `[${registrationInfo.parentName}] 님의 기기와 연결되었습니다. 이제 보호자가 원격으로 잠금을 관리할 수 있습니다.`,
-                [{ text: "확인", onPress: () => navigate('Dashboard') }]
-            );
-        } catch (error) {
+            if (response.success) {
+                // 기기 이전 등으로 인한 신원 전환 처리 (새 토큰 수신 시)
+                if (response.data?.accessToken) {
+                    console.log("[QRScanner] Identity merged, updating tokens...");
+                    await StorageService.setAccessToken(response.data.accessToken);
+                    if (response.data.refreshToken) {
+                        await StorageService.setRefreshToken(response.data.refreshToken);
+                    }
+                    if (response.data.user) {
+                        await StorageService.setUserProfile(response.data.user);
+                        if (response.data.user.role) {
+                            await StorageService.setUserRole(response.data.user.role);
+                        }
+                    }
+                }
+
+                Alert.alert(
+                    "등록 완료",
+                    `[${registrationInfo.parentName}] 님의 기기와 연결되었습니다. 이제 보호자가 원격으로 잠금을 관리할 수 있습니다.`,
+                    [{ text: "확인", onPress: () => navigate('Dashboard') }]
+                );
+            } else {
+                Alert.alert("등록 실패", response.message || "부모 기기와 연결하는 중 오류가 발생했습니다.");
+            }
+        } catch (error: any) {
             console.error("Registration Error:", error);
-            Alert.alert("등록 실패", "부모 기기와 연결하는 중 오류가 발생했습니다.");
+            Alert.alert("등록 실패", error.message || "부모 기기와 연결하는 중 오류가 발생했습니다.");
         } finally {
             setIsApplying(false);
+            setRawQrData(null);
         }
     };
 

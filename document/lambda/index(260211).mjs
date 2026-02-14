@@ -454,6 +454,8 @@ export const handler = async (event) => {
          VALUES ($1, $2, $3, $4, $5, $6, $7, 'ACTIVE', NOW(), NOW())
          ON CONFLICT (device_uuid) DO UPDATE SET
            user_id = EXCLUDED.user_id,
+           device_model = EXCLUDED.device_model,
+           platform = EXCLUDED.platform,
            os_version = EXCLUDED.os_version,
            app_version = EXCLUDED.app_version,
            updated_at = NOW()
@@ -708,10 +710,74 @@ export const handler = async (event) => {
         // POST /qr/scan - QR 스캔 (JWT 불필요)
         if (httpMethod === 'POST' && path === '/qr/scan') {
             const { qrPayload, deviceId } = data;
-            const { qr_id, exp, sig } = JSON.parse(qrPayload);
+            const parsedPayload = JSON.parse(qrPayload);
+            const { type, sig, exp, qrId } = parsedPayload;
+
+            // 1. 등록/연결용 QR (Stateless) 처리
+            if (type === 'CHILD_REGISTRATION' || type === 'PARENT_LINK') {
+                // 서명 검증 (전체 페이로드 HMAC key 순서 고정)
+                const verificationPayload = {
+                    type: parsedPayload.type,
+                    issuerId: parsedPayload.issuerId,
+                    issuerName: parsedPayload.issuerName,
+                    qrId: parsedPayload.qrId,
+                    exp: parsedPayload.exp
+                };
+
+                const expectedSig = crypto.createHmac('sha256', QR_SECRET_KEY)
+                    .update(JSON.stringify(verificationPayload))
+                    .digest('hex');
+
+                console.log(`[QR Scan Debug] Type: ${type}`);
+                console.log(`[QR Scan Debug] Verification Payload String: ${JSON.stringify(verificationPayload)}`);
+                console.log(`[QR Scan Debug] Expected Sig: ${expectedSig}`);
+                console.log(`[QR Scan Debug] Received Sig: ${sig}`);
+
+                if (expectedSig !== sig) {
+                    return response(401, {
+                        success: false,
+                        message: `위변조된 QR 코드입니다 (R) Exp:${expectedSig} Got:${sig}`
+                    });
+                }
+
+                if (exp < Math.floor(Date.now() / 1000)) {
+                    return response(400, { success: false, message: '만료된 QR 코드입니다' });
+                }
+
+                // 등록 정보 반환
+                // CHILD_REGISTRATION: 부모(issuer)가 생성 -> 자녀가 스캔
+                // PARENT_LINK: 자녀(issuer)가 생성 -> 부모가 스캔
+
+                const issuerInfoResult = await client.query('SELECT display_name FROM users WHERE id = $1', [parsedPayload.issuerId]);
+                const issuerRealName = issuerInfoResult.rows.length > 0 ? issuerInfoResult.rows[0].display_name : 'Unknown User';
+
+                let responseInfo = {};
+                if (type === 'CHILD_REGISTRATION') {
+                    responseInfo = {
+                        parentId: parsedPayload.issuerId,
+                        parentName: issuerRealName, // 부모 실제 이름
+                        childName: parsedPayload.issuerName // QR에 담긴 자녀 이름 (입력값)
+                    };
+                } else if (type === 'PARENT_LINK') {
+                    responseInfo = {
+                        childId: parsedPayload.issuerId, // 자녀 ID
+                        childName: issuerRealName,      // 자녀 실제 이름
+                        parentName: 'Scanner (Parent)'  // 부모 이름은 스캐너 몫
+                    };
+                }
+
+                return response(200, {
+                    success: true,
+                    registrationInfo: responseInfo
+                });
+            }
+
+            // 2. 일반 잠금/출석 QR (Stateful) 처리
+            const { qr_id } = parsedPayload;
+            const qrIdToUse = qr_id || qrId;
 
             // HMAC 검증
-            if (generateHMAC(qr_id, exp) !== sig) {
+            if (generateHMAC(qrIdToUse, exp) !== sig) {
                 return response(401, { success: false, message: '위변조된 QR 코드입니다' });
             }
 
@@ -828,14 +894,18 @@ export const handler = async (event) => {
             const user = await requireAuth(event);
 
             const result = await client.query(
-                `SELECT pc.*, u.display_name as child_name, u.email as child_email,
-                d.id as device_id, d.platform, d.accessibility_permission,
-                d.screen_time_permission, d.notification_permission, d.status as device_status
-         FROM parent_child_relations pc
-         JOIN users u ON pc.child_user_id = u.id
-         LEFT JOIN devices d ON d.user_id = pc.child_user_id
-         WHERE pc.parent_user_id = $1
-         ORDER BY u.display_name`,
+                `SELECT DISTINCT ON (pc.child_user_id)
+                    pc.child_user_id, 
+                    COALESCE(pc.nickname, u.display_name) as child_name, 
+                    u.email as child_email,
+                    d.id as device_id, d.platform, d.device_model, d.accessibility_permission,
+                    d.screen_time_permission, d.notification_permission, d.status as device_status,
+                    d.updated_at as device_updated_at
+                 FROM parent_child_relations pc
+                 JOIN users u ON pc.child_user_id = u.id
+                 LEFT JOIN devices d ON d.user_id = pc.child_user_id
+                 WHERE pc.parent_user_id = $1
+                 ORDER BY pc.child_user_id, d.updated_at DESC NULLS LAST`,
                 [user.userId]
             );
 
@@ -846,6 +916,7 @@ export const handler = async (event) => {
                     childName: row.child_name,
                     email: row.child_email,
                     deviceName: row.platform ? `${row.platform}` : null,
+                    deviceModel: row.device_model,
                     status: row.device_status === 'ACTIVE' ? 'ONLINE' : 'OFFLINE',
                     lastSeenAt: row.last_seen_at,
                     hasPermission: row.platform === 'IOS' ? row.screen_time_permission === 'GRANTED' : row.accessibility_permission === 'GRANTED'
@@ -910,31 +981,202 @@ export const handler = async (event) => {
         // POST /parent-child/link - 부모-자녀 연결
         if (httpMethod === 'POST' && path === '/parent-child/link') {
             const user = await requireAuth(event);
-            const { childId, nickname } = data;
+            const { payload, childId, nickname } = data; // payload가 있거나 legacy (childId) 지원
 
-            const linkId = getUUID();
-            await client.query(
-                `INSERT INTO parent_child_relations (id, parent_user_id, child_user_id, created_at)
-         VALUES ($1, $2, $3, NOW())
-         ON CONFLICT (parent_user_id, child_user_id) DO NOTHING`,
-                [linkId, user.userId, childId]
-            );
+            let parentId = null;
+            let targetChildId = null;
 
-            // 해당 자녀에 대한 PARENT 권한 추가 (CHILD scope)
-            await client.query(
-                `INSERT INTO user_roles (user_id, role, scope_type, scope_id)
-                 VALUES ($1, 'PARENT', 'CHILD', $2)
-                 ON CONFLICT (user_id, role, scope_id) DO NOTHING`,
-                [user.userId, childId]
-            );
+            if (payload) {
+                // QR 기반 연결
+                const parsedPayload = JSON.parse(payload);
+                const { type, sig, exp, issuerId } = parsedPayload;
 
-            return response(200, {
-                success: true,
-                message: '자녀가 연결되었습니다'
-            });
+                // 서명 검증 (동일 로직)
+                const verificationPayload = {
+                    type: parsedPayload.type,
+                    issuerId: parsedPayload.issuerId,
+                    issuerName: parsedPayload.issuerName,
+                    qrId: parsedPayload.qrId,
+                    exp: parsedPayload.exp
+                };
+
+                const expectedSig = crypto.createHmac('sha256', QR_SECRET_KEY)
+                    .update(JSON.stringify(verificationPayload))
+                    .digest('hex');
+
+                if (expectedSig !== sig) {
+                    return response(401, { success: false, message: '위변조된 QR 코드입니다 (Link)' });
+                }
+
+                if (exp < Math.floor(Date.now() / 1000)) {
+                    return response(400, { success: false, message: '만료된 QR 코드입니다' });
+                }
+
+                if (type === 'CHILD_REGISTRATION') {
+                    // 부모가 생성한 QR을 자녀가 스캔 -> 자녀가 부모에게 연결 요청
+                    parentId = issuerId;
+                    targetChildId = user.userId;
+                    let existingChildId = null;
+
+                    // 1. 이미 동일한 이름으로 등록된 자녀가 있는지 확인 (기기 변경 대응)
+                    // 1. 이미 동일한 이름으로 등록된 자녀가 있는지 확인 (기기 변경 대응)
+                    if (parsedPayload.issuerName) {
+                        const existingChildResult = await client.query(
+                            `SELECT child_user_id 
+                             FROM parent_child_relations 
+                             WHERE parent_user_id = $1 AND nickname = $2
+                             LIMIT 1`,
+                            [parentId, parsedPayload.issuerName]
+                        );
+                        if (existingChildResult.rows.length > 0) {
+                            existingChildId = existingChildResult.rows[0].child_user_id;
+                        }
+                    }
+
+                    if (existingChildId) {
+                        // 2. 기존 자녀 계정이 있는 경우 -> 세션 통합 (기기 이전)
+                        console.log(`[Link] Merging new device into existing child: ${existingChildId}`);
+
+                        // 기존 자녀의 다른 디바이스 비활성화
+                        await client.query(
+                            `UPDATE devices SET is_active = FALSE, status = 'INACTIVE' WHERE user_id = $1`,
+                            [existingChildId]
+                        );
+
+                        // 현재 스캔 중인 게스트 사용자의 디바이스를 기존 자녀 계정으로 이전
+                        await client.query(
+                            `UPDATE devices SET user_id = $1, is_active = TRUE, status = 'ACTIVE' WHERE user_id = $2`,
+                            [existingChildId, user.userId]
+                        );
+
+                        // 3. 자녀 이름 동기화 (부모 전용 별명 업데이트)
+                        if (parsedPayload.issuerName) {
+                            await client.query(
+                                `UPDATE parent_child_relations SET nickname = $1 WHERE parent_user_id = $2 AND child_user_id = $3`,
+                                [parsedPayload.issuerName, parentId, existingChildId]
+                            );
+                        }
+
+                        targetChildId = existingChildId;
+
+                        // 새로운 토큰 발급 (자녀 앱의 신원 전환)
+                        const accessToken = await generateAccessToken(targetChildId, 'CHILD');
+                        const refreshToken = await generateRefreshToken(targetChildId);
+
+                        return response(200, {
+                            success: true,
+                            message: '기존 자녀 정보와 동기화되었습니다.',
+                            data: {
+                                targetChildId,
+                                accessToken,
+                                refreshToken,
+                                user: {
+                                    id: targetChildId,
+                                    role: 'CHILD',
+                                    name: parsedPayload.issuerName
+                                }
+                            }
+                        });
+                    } else {
+                        // 3. 신규 연결 처리
+                        const linkId = getUUID();
+                        await client.query(
+                            `INSERT INTO parent_child_relations (id, parent_user_id, child_user_id, nickname, created_at)
+                             VALUES ($1, $2, $3, $4, NOW())
+                             ON CONFLICT (parent_user_id, child_user_id) DO UPDATE SET nickname = EXCLUDED.nickname`,
+                            [linkId, parentId, targetChildId, parsedPayload.issuerName]
+                        );
+
+                        await client.query(
+                            `INSERT INTO user_roles (user_id, role, scope_type, scope_id)
+                             VALUES ($1, 'PARENT', 'CHILD', $2)
+                             ON CONFLICT (user_id, role, scope_id) DO NOTHING`,
+                            [parentId, targetChildId]
+                        );
+
+                        // 자녀 이름 업데이트 (users.display_name은 social login용이므로 업데이트 하지 않음)
+                        // nickname은 이미 위의 INSERT ... ON CONFLICT 에서 처리됨.
+                    }
+                } else if (type === 'PARENT_LINK') {
+                    // 기존 부모(issuer)가 생성한 QR을 새 부모(scanner)가 스캔 -> 기존 부모의 모든 자녀를 새 부모에게 공유
+                    // issuerId = Existing Parent
+                    // user.userId = New Parent (Scanner)
+                    parentId = user.userId;
+
+                    // 기존 부모가 관리하는 모든 자녀 조회
+                    // 단, PARENT 권한이 있는 자녀만 (TEACHER 등 제외 필터링 필요시 추가)
+                    const childrenResult = await client.query(
+                        `SELECT child_user_id FROM parent_child_relations WHERE parent_user_id = $1`,
+                        [issuerId]
+                    );
+
+                    if (childrenResult.rows.length === 0) {
+                        return response(400, { success: false, message: '공유할 자녀 정보가 없습니다 (기존 부모에게 연결된 자녀 없음).' });
+                    }
+
+                    let addedCount = 0;
+                    for (const row of childrenResult.rows) {
+                        const cId = row.child_user_id;
+                        const linkId = getUUID();
+
+                        // 관계 생성
+                        await client.query(
+                            `INSERT INTO parent_child_relations (id, parent_user_id, child_user_id, created_at)
+                             VALUES ($1, $2, $3, NOW())
+                             ON CONFLICT (parent_user_id, child_user_id) DO NOTHING`,
+                            [linkId, parentId, cId]
+                        );
+
+                        // 권한 부여
+                        await client.query(
+                            `INSERT INTO user_roles (user_id, role, scope_type, scope_id)
+                             VALUES ($1, 'PARENT', 'CHILD', $2)
+                             ON CONFLICT (user_id, role, scope_id) DO NOTHING`,
+                            [parentId, cId]
+                        );
+                        addedCount++;
+                    }
+
+                    return response(200, {
+                        success: true,
+                        message: `${addedCount}명의 자녀에 대한 관리 권한이 추가되었습니다.`
+                    });
+
+                } else {
+                    return response(400, { success: false, message: '잘못된 QR 타입입니다.' });
+                }
+
+                // CHILD_REGISTRATION의 경우 여기서 리턴
+                return response(200, {
+                    success: true,
+                    message: '자녀가 연결되었습니다'
+                });
+
+            } else if (childId) {
+                // Legacy: 직접 childId 전달
+                const linkId = getUUID();
+                await client.query(
+                    `INSERT INTO parent_child_relations (id, parent_user_id, child_user_id, nickname, created_at)
+                     VALUES ($1, $2, $3, $4, NOW())
+                     ON CONFLICT (parent_user_id, child_user_id) DO UPDATE SET nickname = EXCLUDED.nickname`,
+                    [linkId, user.userId, childId, nickname]
+                );
+
+                await client.query(
+                    `INSERT INTO user_roles (user_id, role, scope_type, scope_id)
+                     VALUES ($1, 'PARENT', 'CHILD', $2)
+                     ON CONFLICT (user_id, role, scope_id) DO NOTHING`,
+                    [user.userId, childId]
+                );
+
+                return response(200, {
+                    success: true,
+                    message: '자녀가 연결되었습니다'
+                });
+            } else {
+                return response(400, { success: false, message: '연결 정보가 부족합니다.' });
+            }
         }
-
-        // GET /parent-child/{childId}/schedules - 자녀 스케줄 조회
         if (httpMethod === 'GET' && path.includes('/parent-child/') && path.includes('/schedules')) {
             const user = await requireAuth(event);
             const pathParts = path.split('/');

@@ -4,6 +4,7 @@ export interface ChildInfo {
     id: string;
     childName: string;
     deviceName?: string;
+    deviceModel?: string;
     status: 'LOCKED' | 'UNLOCKED' | 'OFFLINE';
     lastSeenAt?: string;
     hasPermission?: boolean; // 권한 동의 여부

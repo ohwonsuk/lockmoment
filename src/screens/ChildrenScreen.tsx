@@ -56,7 +56,7 @@ export const ChildrenScreen: React.FC = () => {
             </View>
             <View style={styles.childInfo}>
                 <View style={styles.nameRow}>
-                    <Typography bold style={styles.childName}>{child.childName}</Typography>
+                    <Typography bold style={styles.childName}>{child.childName || '연결된 자녀'}</Typography>
                     {child.status === 'LOCKED' && (
                         <View style={styles.lockedBadge}>
                             <Icon name="lock-closed" size={10} color="white" />
@@ -65,7 +65,7 @@ export const ChildrenScreen: React.FC = () => {
                     )}
                 </View>
                 <Typography variant="caption" color={Colors.textSecondary} numberOfLines={1}>
-                    {child.deviceName || '등록된 기기 없음'}
+                    {child.deviceName || '등록된 기기 없음'} {child.deviceModel ? `(${child.deviceModel})` : ''}
                 </Typography>
             </View>
             <Icon name="chevron-forward" size={20} color={Colors.border} />

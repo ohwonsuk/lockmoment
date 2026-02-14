@@ -75,6 +75,7 @@ export const ChildDetailScreen: React.FC = () => {
                             <Icon name={child.status === 'LOCKED' ? "lock-closed" : "lock-open"} size={24} color="white" />
                         </View>
                         <View style={styles.statusText}>
+                            <Typography bold color={Colors.primary} style={{ marginBottom: 2 }}>{child.childName || '자녀'}</Typography>
                             <Typography variant="h2" bold>{child.status === 'LOCKED' ? '잠금 활성화' : '잠금 해제됨'}</Typography>
                             <Typography variant="caption" color={Colors.textSecondary}>
                                 {child.status === 'LOCKED' ? '현재 집중 모드가 켜져있습니다.' : '자유롭게 기기를 사용 중입니다.'}
@@ -86,9 +87,25 @@ export const ChildDetailScreen: React.FC = () => {
 
                     <View style={styles.deviceInfo}>
                         <Icon name="phone-portrait" size={16} color={Colors.textSecondary} />
-                        <Typography variant="caption" color={Colors.textSecondary}>{child.deviceName || 'Unknown Device'}</Typography>
-                        {/* Battery could be added here if synced */}
+                        <Typography variant="caption" color={Colors.textSecondary}>
+                            {child.deviceName || 'Unknown Platform'} {child.deviceModel ? `(${child.deviceModel})` : ''}
+                        </Typography>
                     </View>
+                </View>
+
+                {/* Device Change Notice / Action */}
+                <View style={styles.relinkNotice}>
+                    <Icon name="information-circle-outline" size={20} color={Colors.primary} />
+                    <Typography style={styles.relinkText}>
+                        기기를 변경하셨나요? {'\n'}
+                        자녀 휴대폰에서 새로운 연결 QR을 스캔하면 자동으로 기기 정보가 갱신됩니다.
+                    </Typography>
+                    <TouchableOpacity
+                        style={styles.relinkButton}
+                        onPress={() => navigate('LinkSubUser' as any, { role: 'PARENT', autoOpen: 'CHILD', autoName: child.childName })}
+                    >
+                        <Typography bold color={Colors.primary} style={{ fontSize: 13 }}>연결 QR 생성</Typography>
+                    </TouchableOpacity>
                 </View>
 
                 {/* Quick Actions */}
@@ -253,6 +270,31 @@ const styles = StyleSheet.create({
         padding: 20,
         borderWidth: 1,
         borderColor: Colors.border,
+    },
+    relinkNotice: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.primary + '10',
+        padding: 16,
+        borderRadius: 16,
+        marginBottom: 20,
+        gap: 12,
+        borderWidth: 1,
+        borderColor: Colors.primary + '30',
+    },
+    relinkText: {
+        flex: 1,
+        fontSize: 12,
+        color: Colors.textSecondary,
+        lineHeight: 18,
+    },
+    relinkButton: {
+        backgroundColor: Colors.background,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: Colors.primary,
     },
     sectionTitle: {
         marginBottom: 16,

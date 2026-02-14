@@ -10,7 +10,7 @@ import { QRCard } from '../components/QRCard';
 
 export const LinkSubUserScreen: React.FC<any> = ({ route }) => {
     const { navigate } = useAppNavigation();
-    const { role } = route.params || { role: 'PARENT' };
+    const { role, autoOpen, autoName } = route.params || { role: 'PARENT' };
 
     // List state
     const [children, setChildren] = useState<ChildInfo[]>([]);
@@ -27,7 +27,10 @@ export const LinkSubUserScreen: React.FC<any> = ({ route }) => {
 
     useEffect(() => {
         loadData();
-    }, []);
+        if (autoOpen) {
+            handleOpenAdd(autoOpen === 'PARENT' ? 'PARENT' : 'CHILD', autoName);
+        }
+    }, [autoOpen, autoName]);
 
     const loadData = async () => {
         setIsLoading(true);
@@ -45,9 +48,9 @@ export const LinkSubUserScreen: React.FC<any> = ({ route }) => {
         }
     };
 
-    const handleOpenAdd = (type: 'CHILD' | 'PARENT') => {
+    const handleOpenAdd = (type: 'CHILD' | 'PARENT', initialName?: string) => {
         setRegType(type);
-        setName('');
+        setName(initialName || '');
         setIsRegModalVisible(true);
     };
 
