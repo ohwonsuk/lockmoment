@@ -18,6 +18,9 @@
 1. `GET /attendance/class/{classId}` - 특정 수업의 학생별 출석 상태 조회
 2. `GET /attendance/student/{studentId}` - 특정 학생의 전체 출석 이력 조회
 
+### 메타데이터
+1. `GET /meta/categories` - 서비스에서 사용하는 앱 카테고리 목록(ID, 이름 등) 조회
+
 ### 개선된 기능
 1. **JWT 기반 보안**: 모든 보호된 엔드포인트에 `jose` 라이브러리를 사용한 JWT 검증 적용
 2. **QR 코드 연동**: QR 생성 시 Preset ID를 연동하여 복잡한 잠금 정책을 한 번에 적용 가능
@@ -311,6 +314,35 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
 
 ---
 
+## 🛠 메타데이터 API
+
+### 8. 앱 카테고리 목록 조회
+`GET /meta/categories`
+서비스에서 정의된 앱 카테고리(교육, 게임, SNS 등)의 ID와 표시 이름을 조회합니다.
+
+**Response**:
+```json
+{
+  "success": true,
+  "categories": [
+    {
+      "id": "EDUCATION",
+      "display_name": "교육",
+      "ios_category": ".education",
+      "android_label": "Play Store: Education"
+    },
+    {
+      "id": "GAMES",
+      "display_name": "게임",
+      "ios_category": ".games",
+      "android_label": "Games"
+    }
+  ]
+}
+```
+
+---
+
 ## 🔧 에러 응답 코드
 
 | 코드 | 설명 | 대응 방법 |
@@ -322,5 +354,5 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
 
 ---
 
-**Last Updated**: 2026-02-11
-**API Version**: 2.2.1
+**Last Updated**: 2026-02-15
+**API Version**: 2.2.2

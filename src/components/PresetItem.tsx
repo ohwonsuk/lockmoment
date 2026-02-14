@@ -32,6 +32,16 @@ export const PresetItem: React.FC<PresetItemProps> = ({ preset, isSelected, onPr
         return Colors.textSecondary;
     };
 
+    // 카테고리 한글 변환
+    const getCategoryLabel = () => {
+        switch (preset.category) {
+            case 'HOME': return '가정용';
+            case 'SCHOOL': return '기관용';
+            case 'COMMON': return '공통';
+            default: return '일반';
+        }
+    };
+
     return (
         <TouchableOpacity
             style={[
@@ -41,65 +51,77 @@ export const PresetItem: React.FC<PresetItemProps> = ({ preset, isSelected, onPr
             onPress={() => onPress?.(preset)}
             activeOpacity={0.7}
         >
+            <View style={styles.headerRow}>
+                <View style={[styles.categoryBadge, { backgroundColor: isSelected ? Colors.primary + '20' : Colors.background }]}>
+                    <Typography variant="caption" style={{ fontSize: 10 }} color={isSelected ? Colors.primary : Colors.textSecondary}>
+                        {getCategoryLabel()}
+                    </Typography>
+                </View>
+                {isSelected && (
+                    <Icon name="checkmark-circle" size={18} color={Colors.primary} />
+                )}
+            </View>
+
             <View style={[styles.iconWrapper, isSelected && styles.iconWrapperSelected]}>
                 <Icon name={getIconName()} size={24} color={getIconColor()} />
             </View>
+
             <View style={styles.textWrapper}>
-                <Typography bold={isSelected} style={styles.name} color={isSelected ? Colors.primary : Colors.text}>
+                <Typography bold={isSelected} style={styles.name} color={isSelected ? Colors.primary : Colors.text} numberOfLines={1}>
                     {preset.name}
                 </Typography>
-                {preset.description && (
-                    <Typography variant="caption" color={Colors.textSecondary} numberOfLines={1}>
-                        {preset.description}
-                    </Typography>
-                )}
+                <Typography variant="caption" color={Colors.textSecondary} numberOfLines={1} style={{ fontSize: 11 }}>
+                    {preset.description || (preset.lock_type === 'FULL' ? '전체 차단' : '앱 잠금')}
+                </Typography>
             </View>
-            {isSelected && (
-                <View style={styles.checkIcon}>
-                    <Icon name="checkmark-circle" size={20} color={Colors.primary} />
-                </View>
-            )}
         </TouchableOpacity>
     );
 };
 
 const styles = StyleSheet.create({
     container: {
-        width: 140,
+        width: 120, // 가로 폭을 약간 줄여 더 많은 카드가 보이도록 함
         backgroundColor: Colors.card,
         borderRadius: 16,
-        padding: 16,
+        padding: 12,
         marginRight: 10,
         borderWidth: 1.5,
         borderColor: Colors.border,
-        position: 'relative',
+        justifyContent: 'space-between',
+        height: 130, // 높이 고정으로 균일한 디자인 유지
     },
     containerSelected: {
         borderColor: Colors.primary,
-        backgroundColor: Colors.primary + '10', // 10% opacity
+        backgroundColor: Colors.primary + '10',
+    },
+    headerRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    categoryBadge: {
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 6,
     },
     iconWrapper: {
-        width: 44,
-        height: 44,
-        borderRadius: 12,
+        width: 40,
+        height: 40,
+        borderRadius: 10,
         backgroundColor: Colors.background,
         justifyContent: 'center',
         alignItems: 'center',
-        marginBottom: 12,
+        marginBottom: 8,
     },
     iconWrapperSelected: {
         backgroundColor: Colors.primary + '20',
     },
     textWrapper: {
-        flex: 1,
+        marginTop: 'auto',
     },
     name: {
-        fontSize: 14,
-        marginBottom: 4,
+        fontSize: 13,
+        lineHeight: 18,
     },
-    checkIcon: {
-        position: 'absolute',
-        top: 10,
-        right: 10,
-    }
 });

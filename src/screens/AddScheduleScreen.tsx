@@ -617,7 +617,7 @@ export const AddScheduleScreen: React.FC = () => {
                                 <QRCard
                                     title={name}
                                     subtitle={qrSubtitle}
-                                    value={qrValue || 'pending'}
+                                    value={qrValue || 'WAITING_FOR_GENERATION'}
                                 />
                             </ViewShot>
                         </View>

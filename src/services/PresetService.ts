@@ -6,6 +6,7 @@ export interface Preset {
     owner_id?: string;
     name: string;
     description?: string;
+    category?: 'HOME' | 'SCHOOL' | 'COMMON';
     purpose: 'LOCK_ONLY' | 'ATTENDANCE_ONLY' | 'LOCK_AND_ATTENDANCE';
     lock_type?: 'FULL' | 'APP_ONLY';
     allowed_categories?: string[];

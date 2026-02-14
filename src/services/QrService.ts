@@ -11,6 +11,8 @@ export interface QrGenerateRequest {
     duration_minutes?: number;
     title?: string;
     blocked_apps?: string[];
+    blocked_categories?: string[];
+    allowed_categories?: string[];
     time_window?: string;
     days?: string[];
     one_time?: boolean;
@@ -28,10 +30,13 @@ export interface QrScanResponse {
     message?: string;
     lockPolicy?: {
         name: string;
+        lock_type?: 'FULL' | 'APP';
         durationMinutes: number;
         timeWindow?: string;
         schedule?: any;
         allowedApps?: string[];
+        allowedCategories?: string[];
+        blockedCategories?: string[];
         preventAppRemoval?: boolean;
     };
     registrationInfo?: {

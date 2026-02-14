@@ -526,11 +526,13 @@ export const handler = async (event) => {
             const user = await requireAuth(event);
             const queryParams = event.queryStringParameters || {};
             const scope = queryParams.scope;
+            const category = queryParams.category;
 
             // 'Preset'은 앱 UI에서 '사전 등록'으로 노출됨
-            let query = 'SELECT *, name as title FROM preset_policies WHERE 1=1';
+            let query = 'SELECT *, name as title FROM preset_policies WHERE is_active = true';
             const params = [];
 
+            // 1. Scope 필터링
             if (scope) {
                 params.push(scope);
                 query += ` AND scope = $${params.length}`;
@@ -539,7 +541,19 @@ export const handler = async (event) => {
                 query += ` AND (scope = 'SYSTEM' OR (scope = 'USER' AND created_by = $${params.length}))`;
             }
 
-            query += ' ORDER BY scope, name';
+            // 2. Category 필터링 (부모/교사 역할에 따른 자동 추천)
+            if (category) {
+                params.push(category);
+                query += ` AND category = $${params.length}`;
+            } else if (user.role === 'PARENT') {
+                // 부모는 HOME 또는 COMMON 우선
+                query += ` AND category IN ('HOME', 'COMMON')`;
+            } else if (user.role === 'TEACHER') {
+                // 교사는 SCHOOL 또는 COMMON 우선
+                query += ` AND category IN ('SCHOOL', 'COMMON')`;
+            }
+
+            query += ' ORDER BY CASE WHEN category = \'HOME\' THEN 1 WHEN category = \'SCHOOL\' THEN 2 ELSE 3 END, name';
 
             const result = await client.query(query, params);
 
@@ -655,33 +669,17 @@ export const handler = async (event) => {
             let finalTitle = data.title || 'QR 잠금';
 
             let policyId = null;
+            let presetId = data.preset_id;
 
-            // 2. 직접 앱 차단 정보를 보낸 경우 (Legacy/Dynamic Policy)
-            if (data.blocked_apps || data.allowed_apps) {
-                policyId = getUUID();
-                await client.query(
-                    `INSERT INTO lock_policies (
-                        id, lock_type, duration_minutes,
-                        allowed_apps, created_by, created_at
-                    ) VALUES ($1, $2, $3, $4, $5, NOW())`,
-                    [
-                        policyId,
-                        'APP_ONLY',
-                        data.duration_minutes || 60,
-                        data.allowed_apps || [],
-                        user.userId
-                    ]
-                );
-            }
-            // 3. Preset 사용하는 경우
-            else if (data.preset_id) {
+            // 1. Preset 사용하는 경우 (우선순위 높음)
+            if (presetId) {
                 const presetResult = await client.query(
                     'SELECT * FROM preset_policies WHERE id = $1',
-                    [data.preset_id]
+                    [presetId]
                 );
 
                 if (presetResult.rows.length === 0) {
-                    return response(404, { success: false, message: '등록된 정보를 찾을 수 없습니다' });
+                    return response(404, { success: false, message: '등록된 프리셋 정보를 찾을 수 없습니다' });
                 }
 
                 const preset = presetResult.rows[0];
@@ -690,11 +688,35 @@ export const handler = async (event) => {
                     `INSERT INTO lock_policies (
                         id, preset_id, lock_type, duration_minutes,
                         allowed_categories, blocked_categories, allowed_apps,
-                        created_by, created_at
+                        title, created_by, created_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
+                    [
+                        policyId, presetId, preset.lock_type, data.duration_minutes || preset.default_duration_minutes,
+                        Array.isArray(preset.allowed_categories) ? preset.allowed_categories : [],
+                        Array.isArray(preset.blocked_categories) ? preset.blocked_categories : [],
+                        Array.isArray(preset.allowed_apps) ? preset.allowed_apps : [],
+                        data.title || preset.name || '사전 등록 잠금',
+                        user.userId
+                    ]
+                );
+            }
+            // 2. 직접 앱/카테고리 차단 정보를 보낸 경우 (직접 설정)
+            else if (data.blocked_apps || data.allowed_apps || data.blocked_categories || data.allowed_categories) {
+                policyId = getUUID();
+                await client.query(
+                    `INSERT INTO lock_policies (
+                        id, lock_type, duration_minutes,
+                        allowed_apps, allowed_categories, blocked_categories, 
+                        title, created_by, created_at
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
                     [
-                        policyId, data.preset_id, preset.lock_type, data.duration_minutes || preset.default_duration_minutes,
-                        preset.allowed_categories, preset.blocked_categories, preset.allowed_apps,
+                        policyId,
+                        data.lock_type || (data.blocked_categories || data.allowed_categories ? 'APP_ONLY' : 'APP_ONLY'), // Default to APP_ONLY if not specified
+                        data.duration_minutes || 60,
+                        Array.isArray(data.allowed_apps) ? data.allowed_apps : [],
+                        Array.isArray(data.allowed_categories) ? data.allowed_categories : [],
+                        Array.isArray(data.blocked_categories) ? data.blocked_categories : [],
+                        data.title || '바로 잠금',
                         user.userId
                     ]
                 );
@@ -751,7 +773,12 @@ export const handler = async (event) => {
         // POST /qr/scan - QR 스캔 (JWT 불필요)
         if (httpMethod === 'POST' && path === '/qr/scan') {
             const { qrPayload, deviceId } = data;
-            const parsedPayload = JSON.parse(qrPayload);
+            let parsedPayload;
+            try {
+                parsedPayload = JSON.parse(qrPayload);
+            } catch (e) {
+                return response(400, { success: false, message: "유효하지 않은 QR 코드입니다. 아직 생성 중이거나 형식이 잘못되었습니다." });
+            }
             const { type, sig, exp, qrId } = parsedPayload;
 
             // 1. 등록/연결용 QR (Stateless) 처리
@@ -829,12 +856,12 @@ export const handler = async (event) => {
 
             // QR 정보 조회
             const qrResult = await client.query(
-                `SELECT q.*, p.lock_type, p.duration_minutes, p.allowed_apps, p.allowed_categories, p.blocked_categories,
+                `SELECT q.*, p.lock_type, p.duration_minutes, p.allowed_apps, p.allowed_categories, p.blocked_categories, p.title as policy_title,
                  (SELECT COUNT(*) FROM qr_device_usage WHERE qr_id = q.id) as current_uses
           FROM qr_codes q
           LEFT JOIN lock_policies p ON q.lock_policy_id = p.id
-          WHERE q.id = $1 AND q.status = 'ACTIVE'`,
-                [qr_id]
+          WHERE q.id = $1::uuid AND q.status = 'ACTIVE'`,
+                [qrIdToUse]
             );
 
             if (qrResult.rows.length === 0) {
@@ -856,30 +883,54 @@ export const handler = async (event) => {
 
             // 디바이스 조회
             const deviceResult = await client.query(
-                'SELECT * FROM devices WHERE id = $1 OR device_uuid = $1',
+                `SELECT d.*, ur.role as user_role 
+                 FROM devices d 
+                 JOIN users u ON d.user_id = u.id 
+                 LEFT JOIN user_roles ur ON u.id = ur.user_id 
+                 WHERE d.id::text = $1 OR d.device_uuid = $1`,
                 [deviceId]
             );
 
             const device = deviceResult.rows[0];
 
+            if (!device) {
+                // 미등록 기기 스캔 시도 기록
+                await client.query(
+                    `INSERT INTO qr_device_usage (id, qr_id, raw_device_uuid, failure_reason, scanned_at)
+                     VALUES ($1, $2, $3, $4, NOW())`,
+                    [getUUID(), qrIdToUse, deviceId, 'UNREGISTERED_DEVICE']
+                );
+                return response(404, {
+                    success: false,
+                    message: '등록되지 않은 기기입니다. 부모님(또는 본인) 계정에서 먼저 기기를 등록해주세요.'
+                });
+            }
+
             // 출석 처리 (ATTENDANCE_ONLY 또는 LOCK_AND_ATTENDANCE)
             if (qrInfo.purpose === 'ATTENDANCE_ONLY' || qrInfo.purpose === 'LOCK_AND_ATTENDANCE') {
                 const targetClassId = qrInfo.target_type === 'CLASS' ? qrInfo.target_id : null;
-                if (device && targetClassId) {
+                if (targetClassId) {
                     await client.query(
                         `INSERT INTO attendance (id, qr_id, class_id, student_id, device_id, status, created_at)
-             VALUES ($1, $2, $3, $4, $5, 'PRESENT', NOW())
-             ON CONFLICT (qr_id, student_id) DO UPDATE SET status = 'PRESENT', created_at = NOW()`,
-                        [getUUID(), qr_id, targetClassId, device?.user_id, device?.id]
+                         VALUES ($1, $2, $3, $4, $5, 'PRESENT', NOW())
+                         ON CONFLICT (qr_id, student_id) DO UPDATE SET status = 'PRESENT', created_at = NOW()`,
+                        [getUUID(), qrIdToUse, targetClassId, device.user_id, device.id]
                     );
                 }
             }
 
             // 사용 기록 추가 (qr_device_usage)
             await client.query(
-                `INSERT INTO qr_device_usage (id, qr_id, user_id, device_id, used_at)
-                 VALUES ($1, $2, $3, $4, NOW())`,
-                [getUUID(), qr_id, device?.user_id || '00000000-0000-0000-0000-000000000000', device?.id]
+                `INSERT INTO qr_device_usage (id, qr_id, user_id, device_id, raw_device_uuid, lock_applied, scanned_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+                [
+                    getUUID(),
+                    qrIdToUse,
+                    device.user_id,
+                    device.id,
+                    deviceId,
+                    (qrInfo.purpose === 'LOCK_ONLY' || qrInfo.purpose === 'LOCK_AND_ATTENDANCE')
+                ]
             );
 
             // 응답 구성
@@ -891,11 +942,12 @@ export const handler = async (event) => {
             // 잠금 정보 포함 (LOCK_ONLY 또는 LOCK_AND_ATTENDANCE)
             if (qrInfo.purpose === 'LOCK_ONLY' || qrInfo.purpose === 'LOCK_AND_ATTENDANCE') {
                 responseData.lockPolicy = {
+                    name: qrInfo.policy_title || '잠금 모드',
                     lock_type: qrInfo.lock_type,
                     durationMinutes: qrInfo.duration_minutes,
-                    allowedApps: qrInfo.allowed_apps || [],
-                    allowedCategories: qrInfo.allowed_categories || [],
-                    blockedCategories: qrInfo.blocked_categories || []
+                    allowedApps: Array.isArray(qrInfo.allowed_apps) ? qrInfo.allowed_apps : [],
+                    allowedCategories: Array.isArray(qrInfo.allowed_categories) ? qrInfo.allowed_categories : [],
+                    blockedCategories: Array.isArray(qrInfo.blocked_categories) ? qrInfo.blocked_categories : []
                 };
             }
 
@@ -1331,6 +1383,19 @@ export const handler = async (event) => {
             return response(200, {
                 success: true,
                 data: result.rows
+            });
+        }
+
+        // ========================================
+        // 메타데이터 엔드포인트
+        // ========================================
+
+        // GET /meta/categories - 앱 카테고리 목록 조회
+        if (httpMethod === 'GET' && path === '/meta/categories') {
+            const result = await client.query('SELECT * FROM app_categories ORDER BY display_name');
+            return response(200, {
+                success: true,
+                categories: result.rows
             });
         }
 

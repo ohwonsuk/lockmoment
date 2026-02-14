@@ -19,6 +19,7 @@ import { PresetItem } from '../components/PresetItem';
 import { useAppNavigation } from '../navigation/NavigationContext';
 
 import { ParentChildService, ChildInfo } from '../services/ParentChildService';
+import { MetaDataService, AppCategory } from '../services/MetaDataService';
 
 const isIOS = Platform.OS === 'ios';
 const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
@@ -48,41 +49,64 @@ export const QRGeneratorScreen: React.FC = () => {
     const [endTime, setEndTime] = useState(new Date(Date.now() + 3600000));
     const [selectedDays, setSelectedDays] = useState<string[]>(['월', '화', '수', '목', '금']);
 
+    // Meta Data State
+    const [allCategories, setAllCategories] = useState<AppCategory[]>([]);
+    const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+    const [isCategoryPickerVisible, setIsCategoryPickerVisible] = useState(false);
+
     // UI Helpers
-    const [isAppPickerVisible, setIsAppPickerVisible] = useState(false);
     const [isTimePickerVisible, setIsTimePickerVisible] = useState(false);
     const [pickerTarget, setPickerTarget] = useState<'start' | 'end'>('start');
-    const [installedApps, setInstalledApps] = useState<{ label: string, packageName: string }[]>([]);
     const cardRef = useRef<any>(null);
 
     useEffect(() => {
         loadData();
     }, []);
 
+    // 갱신 트리거: 설정 변경 시 자동 QR 생성 (Debounced)
+    useEffect(() => {
+        if (selectedPresetId || selectedCategories.length > 0) {
+            const timer = setTimeout(() => {
+                generateQR(false);
+            }, 800);
+            return () => clearTimeout(timer);
+        }
+    }, [selectedPresetId, selectedCategories, duration, lockTitle, qrType, selectedChildId]);
+
     const loadData = async () => {
         setIsLoadingPresets(true);
         try {
-            const [childrenData, systemPresets] = await Promise.all([
+            const [childrenData, systemPresets, categories] = await Promise.all([
                 ParentChildService.getLinkedChildren(),
-                PresetService.getPresets('SYSTEM')
+                PresetService.getPresets('SYSTEM'),
+                MetaDataService.getAppCategories()
             ]);
 
             setChildren(childrenData);
             setPresets(systemPresets);
+            setAllCategories(categories);
 
             // 초기 Preset 선택 (수업 집중 등)
             if (systemPresets.length > 0) {
-                // handlePresetSelect(systemPresets[0]); // 선택적으로 활성화
+                const defaultPreset = systemPresets.find(p => p.name.includes('수업')) || systemPresets[0];
+                handlePresetSelect(defaultPreset);
             }
         } catch (error) {
             console.error("[QRGenerator] Load Data Failed:", error);
         } finally {
             setIsLoadingPresets(false);
-            generateQR();
         }
     };
 
     const handlePresetSelect = (preset: Preset) => {
+        if (selectedPresetId === preset.id) {
+            setSelectedPresetId(null);
+            setLockTitle(qrType === 'INSTANT' ? '바로 잠금' : '예약 잠금');
+            setSelectedCategories([]);
+            setDuration(60);
+            return;
+        }
+
         setSelectedPresetId(preset.id);
         setLockTitle(preset.name);
 
@@ -95,10 +119,36 @@ export const QRGeneratorScreen: React.FC = () => {
         } else if (preset.lock_type === 'FULL') {
             setSelectedApps([]); // 전체 잠금인 경우 앱 목록 비움
         }
+
+        // 카테고리 설정 반영
+        if (preset.blocked_categories && preset.blocked_categories.length > 0) {
+            setSelectedCategories(preset.blocked_categories);
+        } else {
+            setSelectedCategories([]);
+        }
     };
 
-    const generateQR = async () => {
+    const getCategoryLabel = (id: string) => {
+        return allCategories.find(c => c.id === id)?.display_name || id;
+    };
+
+    const toggleCategory = (id: string) => {
+        setSelectedCategories(prev =>
+            prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]
+        );
+    };
+
+    const generateQR = async (manual = true) => {
+        if (manual && !selectedPresetId && selectedCategories.length === 0) {
+            setIsCategoryPickerVisible(true);
+            return;
+        }
+
+        // 자동 갱신인데 선택된게 없으면 무시
+        if (!manual && !selectedPresetId && selectedCategories.length === 0) return;
+
         try {
+            setQrValue(""); // 생성 시작 시 이전 값 초기화하여 혼선 방지
             console.log(`[QRGenerator] Generating ${qrType} QR for child ${selectedChildId}...`);
 
             let qr_type: 'DYNAMIC' | 'STATIC' = 'DYNAMIC';
@@ -123,7 +173,8 @@ export const QRGeneratorScreen: React.FC = () => {
                 preset_id: selectedPresetId || undefined,
                 duration_minutes: finalDuration,
                 title: lockTitle,
-                blocked_apps: qrType === 'INSTANT' ? selectedApps : undefined,
+                blocked_apps: selectedApps, // Legacy support
+                blocked_categories: selectedCategories, // Category based locking
                 time_window: timeWindow,
                 days: days,
                 one_time: qrType === 'INSTANT'
@@ -190,27 +241,6 @@ export const QRGeneratorScreen: React.FC = () => {
             const h = newDate.getHours();
             newDate.setHours(newIsPM ? h + 12 : h - 12);
             setTime(newDate);
-        }
-    };
-
-    const toggleApp = (packageName: string) => {
-        setSelectedApps(prev => prev.includes(packageName) ? prev.filter(p => p !== packageName) : [...prev, packageName]);
-    };
-
-    const handleSelectApps = async () => {
-        try {
-            const universalApps = UniversalAppMapper.getDefaultUniversalIds();
-            const initialList = universalApps.map(id => ({ label: id.charAt(0).toUpperCase() + id.slice(1), packageName: id }));
-            if (Platform.OS === 'android') {
-                const apps = await NativeLockControl.getInstalledApps();
-                const combined = [...initialList, ...apps.filter(app => !universalApps.includes(UniversalAppMapper.mapToUniversal(app.packageName, 'android')))];
-                setInstalledApps(combined);
-            } else {
-                setInstalledApps(initialList);
-            }
-            setIsAppPickerVisible(true);
-        } catch (e) {
-            console.error("App Selection Error:", e);
         }
     };
 
@@ -413,12 +443,41 @@ export const QRGeneratorScreen: React.FC = () => {
                         </>
                     )}
 
-                    <TouchableOpacity style={styles.appPickerButton} onPress={handleSelectApps}>
-                        <Icon name="apps-outline" size={20} color={Colors.primary} />
-                        <Typography color={Colors.primary} bold>
-                            {selectedApps.length > 0 ? `${selectedApps.length}개의 앱 선택됨` : "잠글 앱 선택하기"}
-                        </Typography>
-                    </TouchableOpacity>
+                    {/* 프리셋 정보 또는 앱/카테고리 선택 */}
+                    {selectedPresetId ? (
+                        <View style={styles.policyInfoBox}>
+                            <Typography variant="caption" color={Colors.textSecondary} style={{ marginBottom: 4 }}>사전 등록 정보</Typography>
+                            <Typography style={{ fontSize: 13, color: Colors.textSecondary, marginBottom: 8 }}>
+                                {presets.find(p => p.id === selectedPresetId)?.description}
+                            </Typography>
+                            <View style={styles.tagContainer}>
+                                {presets.find(p => p.id === selectedPresetId)?.lock_type === 'FULL' ? (
+                                    <View style={styles.policyTag}><Typography style={styles.tagText}>전체 잠금</Typography></View>
+                                ) : (
+                                    <>
+                                        {selectedCategories.length > 0 ? (
+                                            selectedCategories.map(cat => (
+                                                <View key={cat} style={[styles.policyTag, { backgroundColor: Colors.primary + '15' }]}>
+                                                    <Typography style={[styles.tagText, { color: Colors.primary }]}>{getCategoryLabel(cat)}</Typography>
+                                                </View>
+                                            ))
+                                        ) : (
+                                            selectedApps.length > 0 && (
+                                                <View style={styles.policyTag}><Typography style={styles.tagText}>{selectedApps.length}개 앱 차단</Typography></View>
+                                            )
+                                        )}
+                                    </>
+                                )}
+                            </View>
+                        </View>
+                    ) : (
+                        <TouchableOpacity style={styles.appPickerButton} onPress={() => setIsCategoryPickerVisible(true)}>
+                            <Icon name="apps-outline" size={20} color={Colors.primary} />
+                            <Typography color={Colors.primary} bold>
+                                {selectedCategories.length > 0 ? `${selectedCategories.length}개의 카테고리 선택됨` : "잠글 카테고리 선택하기"}
+                            </Typography>
+                        </TouchableOpacity>
+                    )}
                 </View>
 
                 <View style={styles.qrContainer}>
@@ -426,13 +485,13 @@ export const QRGeneratorScreen: React.FC = () => {
                         <QRCard
                             title={lockTitle || (qrType === 'INSTANT' ? '바로 잠금' : '예약 잠금')}
                             subtitle={qrSubtitle}
-                            value={qrValue || 'pending'}
+                            value={qrValue || 'WAITING_FOR_GENERATION'}
                         />
                     </ViewShot>
                 </View>
 
                 <View style={styles.actionContainer}>
-                    <TouchableOpacity style={styles.generateButton} onPress={generateQR}>
+                    <TouchableOpacity style={styles.generateButton} onPress={() => generateQR(true)}>
                         <Icon name="refresh-outline" size={20} color="#FFF" />
                         <Typography bold color="#FFF">QR 생성/갱신</Typography>
                     </TouchableOpacity>
@@ -457,24 +516,29 @@ export const QRGeneratorScreen: React.FC = () => {
                 </View>
             </ScrollView>
 
-            <Modal visible={isAppPickerVisible} animationType="slide">
+            {/* Category Picker Modal */}
+            <Modal visible={isCategoryPickerVisible} animationType="slide">
                 <View style={styles.modalContainer}>
-                    <Header title="앱 선택" showBack onBack={() => setIsAppPickerVisible(false)} />
-                    <FlatList
-                        data={installedApps}
-                        keyExtractor={(item) => item.packageName}
-                        renderItem={({ item }) => (
-                            <TouchableOpacity style={styles.appItem} onPress={() => toggleApp(item.packageName)}>
-                                <View style={[styles.checkbox, selectedApps.includes(item.packageName) && styles.checkboxActive]}>
-                                    {selectedApps.includes(item.packageName) && <Icon name="checkmark" size={16} color="#FFF" />}
-                                </View>
-                                <Typography style={styles.appLabel}>{item.label}</Typography>
-                            </TouchableOpacity>
-                        )}
-                        contentContainerStyle={{ padding: 20 }}
-                    />
-                    <TouchableOpacity style={styles.modalConfirmButton} onPress={() => setIsAppPickerVisible(false)}>
-                        <Typography bold color="#FFF">확인</Typography>
+                    <Header title="잠글 카테고리 선택" showBack onBack={() => setIsCategoryPickerVisible(false)} />
+                    <View style={{ padding: 20 }}>
+                        <Typography variant="caption" color={Colors.textSecondary} style={{ marginBottom: 20 }}>
+                            잠금 시간 동안 차단될 카테고리를 선택해주세요.
+                        </Typography>
+                        <FlatList
+                            data={allCategories}
+                            keyExtractor={(item) => item.id}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity style={styles.categoryItem} onPress={() => toggleCategory(item.id)}>
+                                    <View style={[styles.checkbox, selectedCategories.includes(item.id) && styles.checkboxActive]}>
+                                        {selectedCategories.includes(item.id) && <Icon name="checkmark" size={16} color="#FFF" />}
+                                    </View>
+                                    <Typography style={{ fontSize: 16 }}>{item.display_name}</Typography>
+                                </TouchableOpacity>
+                            )}
+                        />
+                    </View>
+                    <TouchableOpacity style={styles.modalConfirmButton} onPress={() => setIsCategoryPickerVisible(false)}>
+                        <Typography bold color="#FFF">선택 완료</Typography>
                     </TouchableOpacity>
                 </View>
             </Modal>
@@ -597,20 +661,23 @@ const styles = StyleSheet.create({
     dayCircleActive: { backgroundColor: Colors.primary + '20', borderColor: Colors.primary },
     appPickerButton: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8, marginTop: 10 },
     qrContainer: { alignItems: 'center', marginBottom: 20 },
+    policyInfoBox: { backgroundColor: Colors.card, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.border, marginTop: 10, alignSelf: 'stretch' },
+    tagContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+    policyTag: { backgroundColor: Colors.background, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: Colors.border },
+    tagText: { fontSize: 11, color: Colors.textSecondary },
     actionContainer: { width: '100%', gap: 12, marginBottom: 30 },
     generateButton: { flexDirection: 'row', backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 14, justifyContent: 'center', alignItems: 'center', gap: 10 },
     secondaryActions: { flexDirection: 'row', gap: 12 },
-    downloadButton: { flex: 1, flexDirection: 'row', backgroundColor: Colors.card, paddingVertical: 16, borderRadius: 14, justifyContent: 'center', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: Colors.border },
-    shareButton: { flex: 1, flexDirection: 'row', backgroundColor: '#10B981', paddingVertical: 16, borderRadius: 14, justifyContent: 'center', alignItems: 'center', gap: 10 },
+    downloadButton: { flex: 1, flexDirection: 'row', backgroundColor: Colors.card, paddingVertical: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: Colors.border },
+    shareButton: { flex: 1, flexDirection: 'row', backgroundColor: Colors.text, paddingVertical: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center', gap: 8 },
     modalContainer: { flex: 1, backgroundColor: Colors.background },
-    appItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.border, gap: 12 },
-    checkbox: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, borderColor: Colors.primary, justifyContent: 'center', alignItems: 'center' },
-    checkboxActive: { backgroundColor: Colors.primary },
-    appLabel: { fontSize: 16 },
-    modalConfirmButton: { backgroundColor: Colors.primary, margin: 20, paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
-    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+    categoryItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.border, marginHorizontal: 20 },
+    checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: Colors.border, justifyContent: 'center', alignItems: 'center' },
+    checkboxActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+    modalConfirmButton: { margin: 20, backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
     modalContent: { backgroundColor: Colors.background, borderRadius: 24, width: '100%', maxWidth: 400, padding: 24 },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-    timeValueBtn: { padding: 10, backgroundColor: Colors.card, borderRadius: 12, borderWidth: 1, borderColor: Colors.border },
-    timeAdjustBtn: { padding: 8 }
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    timeAdjustBtn: { padding: 8 },
+    timeValueBtn: { backgroundColor: Colors.card, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, borderWidth: 1, borderColor: Colors.border },
 });

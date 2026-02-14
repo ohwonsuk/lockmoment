@@ -1,7 +1,9 @@
 -- LockMoment 시스템 Preset 초기 데이터 시드 쿼리
 -- 파일 위치: /Volumes/SSD/development/LockMoment/document/schema/preset_data_seed.sql
 
--- 1. 기존 데이터 정리 (필요시 사용)
+-- 1. 기존 데이터 정리 (필요시 주석을 해제하여 사용)
+-- DELETE FROM app_category_map;
+-- DELETE FROM app_categories;
 -- DELETE FROM preset_policies WHERE scope = 'SYSTEM';
 
 -- 2. 시스템 Preset 데이터 입력
@@ -102,11 +104,15 @@ INSERT INTO preset_policies (
 INSERT INTO app_categories (id, display_name, ios_category, android_label) VALUES
 ('EDUCATION', '교육', '.education', 'Play Store: Education'),
 ('PRODUCTIVITY', '생산성', '.productivity', 'Productivity'),
-('UTILITIES', '유틸리티/도구', '.utilities', 'Tools / Utilities'),
+('UTILITIES', '유틸리티', '.utilities', 'Tools / Utilities'),
 ('REFERENCE', '도서/참고', '.reference', 'Books / Reference'),
 ('ENTERTAINMENT', '엔터테인먼트', '.entertainment', 'Entertainment'),
 ('GAMES', '게임', '.games', 'Games'),
-('SOCIAL', 'SNS/소셜', '.socialNetworking', 'Social')
+('SOCIAL', '소셜', '.socialNetworking', 'Social'),
+('HEALTHVITALITY', '건강', '.healthAndFitness', 'Health & Fitness'),
+('FINANCE', '금융', '.finance', 'Finance'),
+('COMMUNICATION', '연락/통신', '.socialNetworking', 'Communication'),
+('OTHERS', '기타', NULL, 'Others')
 ON CONFLICT (id) DO UPDATE SET 
   display_name = EXCLUDED.display_name,
   ios_category = EXCLUDED.ios_category,

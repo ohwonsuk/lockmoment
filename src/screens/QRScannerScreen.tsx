@@ -11,6 +11,7 @@ import { NativeLockControl } from '../services/NativeLockControl';
 import { QrService, QrScanResponse } from '../services/QrService';
 import { ParentChildService } from '../services/ParentChildService';
 import { UniversalAppMapper } from '../services/UniversalAppMapper';
+import { MetaDataService, AppCategory } from '../services/MetaDataService';
 import { Platform } from 'react-native';
 
 const isIOS = Platform.OS === 'ios';
@@ -21,14 +22,20 @@ export const QRScannerScreen: React.FC = () => {
     const device = useCameraDevice('back');
 
     const [isProcessing, setIsProcessing] = useState(false);
+    const isScanningRef = React.useRef(false);
     const [scanResult, setScanResult] = useState<QrScanResponse['lockPolicy'] | null>(null);
     const [registrationInfo, setRegistrationInfo] = useState<QrScanResponse['registrationInfo'] | null>(null);
     const [rawQrData, setRawQrData] = useState<string | null>(null);
     const [isConfirmModalVisible, setIsConfirmModalVisible] = useState(false);
     const [isRegistrationModalVisible, setIsRegistrationModalVisible] = useState(false);
     const [isApplying, setIsApplying] = useState(false);
+    const [allCategories, setAllCategories] = useState<AppCategory[]>([]);
 
     useEffect(() => {
+        const loadCategories = async () => {
+            const categories = await MetaDataService.getAppCategories();
+            setAllCategories(categories);
+        };
         const checkPermission = async () => {
             const status = await Camera.requestCameraPermission();
             setHasPermission(status === 'granted');
@@ -44,13 +51,16 @@ export const QRScannerScreen: React.FC = () => {
                 );
             }
         };
+
+        loadCategories();
         checkPermission();
     }, []);
 
     const codeScanner = useCodeScanner({
         codeTypes: ['qr'],
         onCodeScanned: (codes) => {
-            if (codes.length > 0 && codes[0].value && !isProcessing && !isConfirmModalVisible && !isRegistrationModalVisible) {
+            if (codes.length > 0 && codes[0].value && !isScanningRef.current && !isConfirmModalVisible && !isRegistrationModalVisible) {
+                isScanningRef.current = true;
                 const scannedData = codes[0].value;
                 handleScannedData(scannedData);
             }
@@ -100,6 +110,7 @@ export const QRScannerScreen: React.FC = () => {
             Alert.alert("오류", error.message || "QR 처리 중 오류가 발생했습니다.", [
                 {
                     text: "재시도", onPress: () => {
+                        isScanningRef.current = false;
                         setIsProcessing(false);
                         setRegistrationInfo(null);
                         setScanResult(null);
@@ -180,14 +191,14 @@ export const QRScannerScreen: React.FC = () => {
                 return;
             }
 
-            const { name, durationMinutes, allowedApps, preventAppRemoval } = scanResult;
+            const { name, durationMinutes, allowedApps, preventAppRemoval, lock_type } = scanResult;
             const durationMs = durationMinutes * 60 * 1000;
 
             const nativeAppIds = UniversalAppMapper.mapToNative(allowedApps || [], platform);
             const prevent = preventAppRemoval !== undefined ? preventAppRemoval : await StorageService.getPreventAppRemoval();
 
-            // iOS 유의사항: 선택된 이력이 없는 경우 Picker 노출
-            if (isIOS) {
+            // iOS 유의사항: APP 모드인데 선택된 이력이 없는 경우 Picker 노출 (FULL은 Picker 불필요)
+            if (isIOS && lock_type !== 'FULL') {
                 const count = await NativeLockControl.getSelectedAppCount();
                 if (count === 0) {
                     await new Promise<void>((resolve) => {
@@ -197,7 +208,7 @@ export const QRScannerScreen: React.FC = () => {
                             [{ text: "확인", onPress: () => resolve() }]
                         );
                     });
-                    const newCount = await NativeLockControl.presentFamilyActivityPicker('app');
+                    const newCount = await NativeLockControl.presentFamilyActivityPicker('APP') as number;
                     if (newCount === 0) {
                         setIsApplying(false);
                         return; // User cancelled or didn't select anything
@@ -208,7 +219,7 @@ export const QRScannerScreen: React.FC = () => {
             // 잠금 실행
             await NativeLockControl.startLock(
                 durationMs,
-                'app',
+                lock_type || 'APP',
                 name || "QR 잠금",
                 JSON.stringify(nativeAppIds),
                 prevent
@@ -227,7 +238,14 @@ export const QRScannerScreen: React.FC = () => {
     };
 
     const getAppLabel = (id: string) => {
+        // 우선 카테고리에서 찾아보고 없으면 기본 변환
+        const cat = allCategories.find(c => c.id === id);
+        if (cat) return cat.display_name;
         return id.charAt(0).toUpperCase() + id.slice(1);
+    };
+
+    const getCategoryLabel = (id: string) => {
+        return allCategories.find(c => c.id === id)?.display_name || id;
     };
 
     return (
@@ -276,13 +294,30 @@ export const QRScannerScreen: React.FC = () => {
                             </View>
 
                             <View style={styles.infoRow}>
-                                <Typography variant="caption" color={Colors.textSecondary}>잠금 대상 앱 ({scanResult?.allowedApps?.length || 0})</Typography>
+                                <Typography variant="caption" color={Colors.textSecondary}>
+                                    잠금 대상 {scanResult?.lock_type === 'FULL' ? '(전체)' : `(${((scanResult?.allowedApps?.length || 0) + (scanResult?.blockedCategories?.length || 0))})`}
+                                </Typography>
                                 <View style={styles.appsList}>
-                                    {scanResult?.allowedApps?.map((app, idx) => (
-                                        <View key={idx} style={styles.appBadge}>
-                                            <Typography style={{ fontSize: 12, color: '#FFF' }}>{getAppLabel(app)}</Typography>
+                                    {/* 카테고리 표시 */}
+                                    {scanResult?.blockedCategories?.map((cat: string, idx: number) => (
+                                        <View key={`cat-${idx}`} style={[styles.appBadge, { backgroundColor: Colors.primary + '20', borderWidth: 1, borderColor: Colors.primary }]}>
+                                            <Typography style={{ fontSize: 12, color: Colors.primary }}>{getCategoryLabel(cat)}</Typography>
                                         </View>
                                     ))}
+                                    {/* 개별 앱 표시 */}
+                                    {Array.isArray(scanResult?.allowedApps) && scanResult?.allowedApps.length > 0 ? (
+                                        scanResult?.allowedApps?.map((app: string, idx: number) => (
+                                            <View key={`app-${idx}`} style={styles.appBadge}>
+                                                <Typography style={{ fontSize: 12, color: '#FFF' }}>{getAppLabel(app)}</Typography>
+                                            </View>
+                                        ))
+                                    ) : (
+                                        (!scanResult?.blockedCategories || scanResult?.blockedCategories.length === 0) && (
+                                            <Typography variant="caption" color={Colors.textSecondary}>
+                                                {scanResult?.lock_type === 'FULL' ? '모든 앱 및 카테고리가 차단됩니다.' : '제한 없음'}
+                                            </Typography>
+                                        )
+                                    )}
                                 </View>
                             </View>
 
