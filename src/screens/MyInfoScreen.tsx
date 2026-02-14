@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, Image } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, Image, Platform } from 'react-native';
+import DeviceInfo from 'react-native-device-info';
 import { Colors } from '../theme/Colors';
 import { Typography } from '../components/Typography';
 import { Header } from '../components/Header';
@@ -12,9 +13,11 @@ export const MyInfoScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
     const [userProfile, setUserProfile] = useState<any>(null);
     const [role, setRole] = useState('PARENT');
+    const [deviceInfo, setDeviceInfo] = useState<any>(null);
 
     useEffect(() => {
         loadProfile();
+        loadDeviceInfo();
     }, []);
 
     const loadProfile = async () => {
@@ -22,6 +25,15 @@ export const MyInfoScreen: React.FC = () => {
         setUserProfile(profile);
         const r = await StorageService.getUserRole();
         if (r) setRole(r);
+    };
+
+    const loadDeviceInfo = async () => {
+        const data = await AuthService.getDeviceData();
+        setDeviceInfo({
+            ...data,
+            appVersion: DeviceInfo.getVersion(),
+            bundleId: DeviceInfo.getBundleId()
+        });
     };
 
     const handleLogout = () => {
@@ -42,7 +54,21 @@ export const MyInfoScreen: React.FC = () => {
         );
     };
 
+    const isAnonymous = userProfile?.auth_provider === 'ANONYMOUS';
+
     const menuItems = [
+        ...(isAnonymous ? [
+            {
+                icon: 'phone-portrait-outline',
+                label: '내 기기 정보',
+                onPress: () => {
+                    Alert.alert(
+                        "기기 정보",
+                        `모델: ${deviceInfo?.model}\nOS: ${deviceInfo?.osVersion}\n버전: ${deviceInfo?.appVersion}`
+                    );
+                }
+            }
+        ] : []),
         { icon: 'settings-outline', label: '앱 설정', onPress: () => navigate('Settings') },
         { icon: 'notifications-outline', label: '알림 설정', onPress: () => navigate('NotificationSettings') },
         { icon: 'shield-checkmark-outline', label: '권한 관리', onPress: () => navigate('Permissions') },
@@ -61,15 +87,17 @@ export const MyInfoScreen: React.FC = () => {
                         <Icon name="person" size={40} color="white" />
                     </View>
                     <View style={styles.profileInfo}>
-                        <Typography variant="h2" bold>{userProfile?.nickname || '사용자'}</Typography>
-                        <Typography color={Colors.textSecondary}>{userProfile?.email || 'user@email.com'}</Typography>
+                        <Typography variant="h2" bold>{isAnonymous ? '일반 사용자' : (userProfile?.name || '사용자')}</Typography>
+                        {!isAnonymous && <Typography color={Colors.textSecondary}>{userProfile?.email || ''}</Typography>}
                         <View style={styles.roleBadge}>
                             <Typography variant="caption" color={Colors.primary} bold>{role}</Typography>
                         </View>
                     </View>
-                    <TouchableOpacity onPress={() => navigate('Settings')}>
-                        <Icon name="chevron-forward" size={24} color={Colors.textSecondary} />
-                    </TouchableOpacity>
+                    {!isAnonymous && (
+                        <TouchableOpacity onPress={() => navigate('Settings')}>
+                            <Icon name="chevron-forward" size={24} color={Colors.textSecondary} />
+                        </TouchableOpacity>
+                    )}
                 </View>
 
                 {/* Menu List */}
@@ -85,13 +113,15 @@ export const MyInfoScreen: React.FC = () => {
                     ))}
                 </View>
 
-                {/* Logout Button */}
-                <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-                    <Typography color="#EF4444" bold>로그아웃</Typography>
-                </TouchableOpacity>
+                {/* Logout Button - Hidden for Anonymous */}
+                {!isAnonymous && (
+                    <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+                        <Typography color="#EF4444" bold>로그아웃</Typography>
+                    </TouchableOpacity>
+                )}
 
                 <Typography variant="caption" color={Colors.textSecondary} style={{ textAlign: 'center', marginTop: 24 }}>
-                    버전 1.0.0
+                    버전 {deviceInfo?.appVersion || '1.0.0'}
                 </Typography>
             </ScrollView>
         </View>

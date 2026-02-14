@@ -101,7 +101,8 @@ export const QRGeneratorScreen: React.FC = () => {
         try {
             console.log(`[QRGenerator] Generating ${qrType} QR for child ${selectedChildId}...`);
 
-            let type: any = qrType === 'INSTANT' ? 'USER_INSTANT_LOCK' : 'USER_SCHEDULE_LOCK';
+            let qr_type: 'DYNAMIC' | 'STATIC' = 'DYNAMIC';
+            let purpose: 'LOCK_ONLY' | 'LOCK_AND_ATTENDANCE' = qrType === 'INSTANT' ? 'LOCK_ONLY' : 'LOCK_AND_ATTENDANCE';
             let timeWindow: string | undefined = undefined;
             let days: string[] | undefined = undefined;
             let finalDuration = duration;
@@ -117,15 +118,15 @@ export const QRGeneratorScreen: React.FC = () => {
             }
 
             const result = await QrService.generateQr({
-                type,
-                purpose: presets.find(p => p.id === selectedPresetId)?.purpose,
+                qr_type,
+                purpose,
                 preset_id: selectedPresetId || undefined,
                 duration_minutes: finalDuration,
                 title: lockTitle,
-                blocked_apps: qrType === 'INSTANT' ? selectedApps : undefined, // 스케줄은 정책 기반일 확률이 높음
+                blocked_apps: qrType === 'INSTANT' ? selectedApps : undefined,
                 time_window: timeWindow,
                 days: days,
-                one_time: type === 'USER_INSTANT_LOCK'
+                one_time: qrType === 'INSTANT'
             });
 
             if (result && result.success) {
@@ -142,6 +143,7 @@ export const QRGeneratorScreen: React.FC = () => {
                     title: lockTitle,
                     duration: finalDuration,
                     apps: selectedApps,
+                    presetId: selectedPresetId,
                     childId: selectedChildId,
                     window: timeWindow,
                     days: days,
@@ -311,7 +313,7 @@ export const QRGeneratorScreen: React.FC = () => {
 
             <View style={styles.presetSection}>
                 <View style={styles.sectionHeader}>
-                    <Typography bold>Preset 선택</Typography>
+                    <Typography bold>사전 등록 선택</Typography>
                     <Typography variant="caption" color={Colors.textSecondary}>원하는 상황을 선택하세요</Typography>
                 </View>
                 <FlatList

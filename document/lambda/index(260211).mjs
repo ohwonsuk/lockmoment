@@ -396,7 +396,8 @@ export const handler = async (event) => {
                 user: {
                     id: userId,
                     role: 'CHILD',
-                    auth_provider: 'ANONYMOUS'
+                    auth_provider: 'ANONYMOUS',
+                    is_linked: false // 신규 게스트는 항상 미연결 상태
                 }
             });
         }
@@ -410,9 +411,10 @@ export const handler = async (event) => {
                 return response(401, { success: false, message: '유효하지 않은 리프레시 토큰' });
             }
 
-            // 사용자 조회 (역할 포함)
+            // 사용자 조회 (역할 및 연결 상태 포함)
             const userResult = await client.query(
-                `SELECT u.id, ur.role 
+                `SELECT u.id, ur.role, u.auth_provider,
+                    EXISTS(SELECT 1 FROM parent_child_relations WHERE child_user_id = u.id OR parent_user_id = u.id) as is_linked
                  FROM users u 
                  JOIN user_roles ur ON u.id = ur.user_id 
                  WHERE u.id = $1`,
@@ -430,7 +432,13 @@ export const handler = async (event) => {
 
             return response(200, {
                 success: true,
-                accessToken
+                accessToken,
+                user: {
+                    id: dbUser.id,
+                    role: dbUser.role,
+                    auth_provider: dbUser.auth_provider,
+                    is_linked: dbUser.is_linked
+                }
             });
         }
 
@@ -519,14 +527,14 @@ export const handler = async (event) => {
             const queryParams = event.queryStringParameters || {};
             const scope = queryParams.scope;
 
-            let query = 'SELECT * FROM preset_policies WHERE 1=1';
+            // 'Preset'은 앱 UI에서 '사전 등록'으로 노출됨
+            let query = 'SELECT *, name as title FROM preset_policies WHERE 1=1';
             const params = [];
 
             if (scope) {
                 params.push(scope);
                 query += ` AND scope = $${params.length}`;
             } else {
-                // scope 지정 안 하면 SYSTEM과 자신의 USER preset만
                 params.push(user.userId);
                 query += ` AND (scope = 'SYSTEM' OR (scope = 'USER' AND created_by = $${params.length}))`;
             }
@@ -537,7 +545,11 @@ export const handler = async (event) => {
 
             return response(200, {
                 success: true,
-                presets: result.rows
+                message: '사전 등록(사전 설정) 목록 조회 성공',
+                presets: result.rows.map(r => ({
+                    ...r,
+                    title: r.name // UI 호환성 보장
+                }))
             });
         }
 
@@ -638,65 +650,94 @@ export const handler = async (event) => {
         if (httpMethod === 'POST' && path === '/qr/generate') {
             const user = await requireAuth(event);
 
-            const {
-                purpose,
-                preset_id,
-                target_type,
-                target_id,
-                duration_minutes,
-                schedule_mode,
-                valid_from,
-                valid_to,
-                class_id,
-                max_uses
-            } = data;
+            // 1. 요청 데이터 매핑 (기존 형식 지원)
+            let finalPurpose = data.purpose || (data.type === 'USER_INSTANT_LOCK' ? 'LOCK_ONLY' : 'LOCK_AND_ATTENDANCE');
+            let finalTitle = data.title || 'QR 잠금';
 
             let policyId = null;
 
-            // Preset 사용하는 경우
-            if (preset_id) {
-                const presetResult = await client.query(
-                    'SELECT * FROM preset_policies WHERE id = $1',
-                    [preset_id]
-                );
-
-                if (presetResult.rows.length === 0) {
-                    return response(404, { success: false, message: 'Preset을 찾을 수 없습니다' });
-                }
-
-                const preset = presetResult.rows[0];
-
-                // Lock policy 생성
+            // 2. 직접 앱 차단 정보를 보낸 경우 (Legacy/Dynamic Policy)
+            if (data.blocked_apps || data.allowed_apps) {
                 policyId = getUUID();
                 await client.query(
                     `INSERT INTO lock_policies (
-            id, preset_id, lock_type, duration_minutes,
-            allowed_categories, blocked_categories, allowed_apps,
-            created_by, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+                        id, lock_type, duration_minutes,
+                        allowed_apps, created_by, created_at
+                    ) VALUES ($1, $2, $3, $4, $5, NOW())`,
                     [
-                        policyId, preset_id, preset.lock_type, duration_minutes || preset.default_duration_minutes,
+                        policyId,
+                        'APP_ONLY',
+                        data.duration_minutes || 60,
+                        data.allowed_apps || [],
+                        user.userId
+                    ]
+                );
+            }
+            // 3. Preset 사용하는 경우
+            else if (data.preset_id) {
+                const presetResult = await client.query(
+                    'SELECT * FROM preset_policies WHERE id = $1',
+                    [data.preset_id]
+                );
+
+                if (presetResult.rows.length === 0) {
+                    return response(404, { success: false, message: '등록된 정보를 찾을 수 없습니다' });
+                }
+
+                const preset = presetResult.rows[0];
+                policyId = getUUID();
+                await client.query(
+                    `INSERT INTO lock_policies (
+                        id, preset_id, lock_type, duration_minutes,
+                        allowed_categories, blocked_categories, allowed_apps,
+                        created_by, created_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+                    [
+                        policyId, data.preset_id, preset.lock_type, data.duration_minutes || preset.default_duration_minutes,
                         preset.allowed_categories, preset.blocked_categories, preset.allowed_apps,
                         user.userId
                     ]
                 );
             }
 
-            // QR 코드 생성
+            // 4. QR 코드 생성
             const qrId = getUUID();
             const exp = Math.floor(Date.now() / 1000) + (24 * 3600); // 24시간 유효
             const sig = generateHMAC(qrId, exp);
 
             await client.query(
                 `INSERT INTO qr_codes (
-          id, qr_type, purpose, preset_id, lock_policy_id, target_type, target_id,
-          schedule_mode, valid_from, valid_to, max_scan_count,
-          hmac_sig, status, created_by, created_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACTIVE', $13, NOW())`,
+                    id, qr_type, purpose, preset_id, lock_policy_id, target_type, target_id,
+                    schedule_mode, valid_from, valid_to, one_time, max_scan_count,
+                    hmac_sig, status, created_by, created_at
+                ) VALUES (
+                    $1, 
+                    $2::qr_type_enum, 
+                    $3::qr_purpose_enum, 
+                    $4, $5, 
+                    $6::qr_target_type_enum, 
+                    $7, 
+                    $8::qr_schedule_mode_enum, 
+                    $9, $10, $11, $12, 
+                    $13, 
+                    'ACTIVE'::qr_status_enum, 
+                    $14, NOW()
+                )`,
                 [
-                    qrId, 'DYNAMIC', purpose, preset_id || null, policyId, target_type || (class_id ? 'CLASS' : 'DEVICE'), target_id || class_id,
-                    schedule_mode || 'IMMEDIATE', valid_from, valid_to, max_uses,
-                    sig, user.userId
+                    qrId,
+                    (data.qr_type || 'DYNAMIC').toUpperCase(),
+                    finalPurpose.toUpperCase(),
+                    data.preset_id || null,
+                    policyId,
+                    (data.target_type || (data.class_id ? 'CLASS' : (data.child_id || data.device_id ? 'DEVICE' : 'STUDENT'))).toUpperCase(),
+                    data.target_id || data.child_id || data.device_id || data.class_id || user.userId,
+                    (data.schedule_mode || 'IMMEDIATE').toUpperCase(),
+                    data.valid_from,
+                    data.valid_to,
+                    data.one_time || false,
+                    data.max_uses || (data.one_time ? 1 : null),
+                    sig,
+                    user.userId
                 ]
             );
 

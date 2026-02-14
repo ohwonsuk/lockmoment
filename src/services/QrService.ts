@@ -2,7 +2,8 @@ import { apiService } from './ApiService';
 import { AuthService } from './AuthService';
 
 export interface QrGenerateRequest {
-    type?: 'CLASS_ATTEND' | 'USER_INSTANT_LOCK' | 'USER_SCHEDULE_LOCK' | 'CHILD_REGISTRATION';
+    type?: string;
+    qr_type?: 'DYNAMIC' | 'STATIC';
     purpose?: 'LOCK_ONLY' | 'ATTENDANCE_ONLY' | 'LOCK_AND_ATTENDANCE';
     preset_id?: string;
     target_type?: 'STUDENT' | 'CLASS';
