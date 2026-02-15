@@ -408,4 +408,20 @@ class LockControlModule(reactContext: ReactApplicationContext) : ReactContextBas
             promise.reject("HISTORY_ERROR", e.message)
         }
     }
+    @ReactMethod
+    fun setPreventAppRemoval(enabled: Boolean, promise: Promise) {
+        try {
+            val context = reactApplicationContext
+            val lockManager = LockManager.getInstance(context)
+            lockManager.setUninstallBlocked(enabled)
+            
+            // Save as global preference
+            val prefs = context.getSharedPreferences("lock_state", Context.MODE_PRIVATE)
+            prefs.edit().putBoolean("globalPreventAppRemoval", enabled).apply()
+            
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("SET_REMOVAL_ERROR", e.message)
+        }
+    }
 }

@@ -52,6 +52,7 @@ export const SettingsScreen: React.FC = () => {
         }
         setPreventAppRemoval(value);
         await StorageService.setPreventAppRemoval(value);
+        await NativeLockControl.setPreventAppRemoval(value);
     };
 
     return (

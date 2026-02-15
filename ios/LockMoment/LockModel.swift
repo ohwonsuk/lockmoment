@@ -116,9 +116,9 @@ class LockModel: ObservableObject {
         
         store.shield.webDomainCategories = ShieldSettings.ActivityCategoryPolicy.specific(sel.categoryTokens)
         
-        // Apply app removal prevention if requested
+        // Apply app removal prevention whenever locked
         if #available(iOS 16.0, *) {
-            store.application.denyAppRemoval = preventRemoval
+            store.application.denyAppRemoval = true
         }
         
         isLocked = true
@@ -143,6 +143,12 @@ class LockModel: ObservableObject {
         store.shield.applicationCategories = nil
         store.shield.webDomainCategories = nil
         store.clearAllSettings()
+        
+        // Restore persistent "prevent app removal" setting if it was on
+        if #available(iOS 16.0, *) {
+            let pref = UserDefaults.standard.bool(forKey: "preventAppRemovalSetting")
+            store.application.denyAppRemoval = pref
+        }
         
         isLocked = false
         endTime = nil

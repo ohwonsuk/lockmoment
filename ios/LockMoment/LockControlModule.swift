@@ -219,6 +219,34 @@ class LockControl: NSObject {
             let startTrigger = UNCalendarNotificationTrigger(dateMatching: startComponents, repeats: true)
             let startRequest = UNNotificationRequest(identifier: "\(startBaseId)_\(day)", content: startContent, trigger: startTrigger)
             center.add(startRequest)
+            
+            // 1-1. Auto-apply check: if now is within (startDate) and (endDate)
+            let endTimeParts = endTime.split(separator: ":")
+            if endTimeParts.count >= 2,
+               let endHour = Int(endTimeParts[0]),
+               let endMinute = Int(endTimeParts[1]) {
+                
+                let now = Date()
+                let currentWeekday = calendar.component(.weekday, from: now)
+                
+                if weekday == currentWeekday {
+                    let nowHour = calendar.component(.hour, from: now)
+                    let nowMinute = calendar.component(.minute, from: now)
+                    
+                    let nowTotal = nowHour * 60 + nowMinute
+                    let startTotal = hour * 60 + minute
+                    let endTotal = endHour * 60 + endMinute
+                    
+                    if nowTotal >= startTotal && nowTotal < endTotal {
+                        let remainingMs = Double((endTotal - nowTotal) * 60 * 1000)
+                        if remainingMs > 0 {
+                            DispatchQueue.main.async {
+                                LockModel.shared.startLock(duration: remainingMs, lockType: lockType, name: name, preventRemoval: preventAppRemoval)
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         // 2. Schedule Pre-Lock Notification if needed
@@ -281,6 +309,19 @@ class LockControl: NSObject {
       }
       
       tryOpen(index: 0)
+    }
+  }
+
+  @objc(setPreventAppRemoval:resolve:rejecter:)
+  func setPreventAppRemoval(_ enabled: Bool, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    if #available(iOS 16.0, *) {
+      DispatchQueue.main.async {
+        LockModel.shared.store.application.denyAppRemoval = enabled
+        UserDefaults.standard.set(enabled, forKey: "preventAppRemovalSetting")
+        resolve(true)
+      }
+    } else {
+      resolve(false)
     }
   }
 

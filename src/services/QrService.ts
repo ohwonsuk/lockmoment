@@ -23,11 +23,13 @@ export interface QrGenerateResponse {
     success: boolean;
     qr_id: string;
     payload: string; // HMAC signed payload
+    message?: string;
 }
 
 export interface QrScanResponse {
     success: boolean;
     message?: string;
+    purpose?: 'LOCK_ONLY' | 'ATTENDANCE_ONLY' | 'LOCK_AND_ATTENDANCE';
     lockPolicy?: {
         name: string;
         lock_type?: 'FULL' | 'APP';
@@ -38,6 +40,7 @@ export interface QrScanResponse {
         allowedCategories?: string[];
         blockedCategories?: string[];
         preventAppRemoval?: boolean;
+        days?: string[];
     };
     registrationInfo?: {
         parentId: string;

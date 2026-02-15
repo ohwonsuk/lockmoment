@@ -47,5 +47,6 @@ RCT_EXTERN_METHOD(getSelectedAppCount : (RCTPromiseResolveBlock)
                       resolve rejecter : (RCTPromiseRejectBlock)reject)
 RCT_EXTERN_METHOD(getNativeHistory : (RCTPromiseResolveBlock)
                       resolve rejecter : (RCTPromiseRejectBlock)reject)
-
+RCT_EXTERN_METHOD(setPreventAppRemoval : (BOOL)enabled resolve : (
+    RCTPromiseResolveBlock)resolve rejecter : (RCTPromiseRejectBlock)reject)
 @end

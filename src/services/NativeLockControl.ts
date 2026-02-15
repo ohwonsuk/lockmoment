@@ -43,6 +43,7 @@ export interface LockControlInterface {
     getNativeHistory(): Promise<string>;
     checkDeviceAdminActive(): Promise<boolean>;
     requestDeviceAdmin(): Promise<boolean>;
+    setPreventAppRemoval(enabled: boolean): Promise<boolean>;
 }
 
 const defaultLockControl: LockControlInterface = {
@@ -66,6 +67,7 @@ const defaultLockControl: LockControlInterface = {
     getNativeHistory: async () => "[]",
     checkDeviceAdminActive: async () => false,
     requestDeviceAdmin: async () => false,
+    setPreventAppRemoval: async () => false,
 };
 
 export const NativeLockControl: LockControlInterface = LockControl || defaultLockControl;

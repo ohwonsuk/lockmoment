@@ -45,14 +45,37 @@ export const QRGeneratorScreen: React.FC = () => {
     const [selectedChildId, setSelectedChildId] = useState<string>('all'); // 'all' or specific id
 
     // Schedule State (for SCHEDULED tab)
-    const [startTime, setStartTime] = useState(new Date());
-    const [endTime, setEndTime] = useState(new Date(Date.now() + 3600000));
+    const getRoundedDate = (date: Date) => {
+        const rounded = new Date(date);
+        rounded.setMinutes(Math.round(rounded.getMinutes() / 5) * 5);
+        rounded.setSeconds(0);
+        rounded.setMilliseconds(0);
+        return rounded;
+    };
+
+    const [startTime, setStartTime] = useState(getRoundedDate(new Date()));
+    const [endTime, setEndTime] = useState(getRoundedDate(new Date(Date.now() + 3600000)));
     const [selectedDays, setSelectedDays] = useState<string[]>(['월', '화', '수', '목', '금']);
 
     // Meta Data State
     const [allCategories, setAllCategories] = useState<AppCategory[]>([]);
     const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
     const [isCategoryPickerVisible, setIsCategoryPickerVisible] = useState(false);
+
+    const [lastGeneratedConfig, setLastGeneratedConfig] = useState<string>("");
+    const [isStale, setIsStale] = useState(false);
+
+    // 현재 설정 상태 요약 (변경 감지용 - 고정 포맷 사용)
+    const currentConfig = JSON.stringify({
+        selectedPresetId,
+        selectedCategories,
+        duration,
+        lockTitle,
+        qrType,
+        startTime: `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`,
+        endTime: `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`,
+        selectedDays
+    });
 
     // UI Helpers
     const [isTimePickerVisible, setIsTimePickerVisible] = useState(false);
@@ -63,15 +86,26 @@ export const QRGeneratorScreen: React.FC = () => {
         loadData();
     }, []);
 
-    // 갱신 트리거: 설정 변경 시 자동 QR 생성 (Debounced)
+    // 설정 변경 시 갱신 필요(Stale) 상태 판별 및 자동 갱신 로직
     useEffect(() => {
-        if (selectedPresetId || selectedCategories.length > 0) {
-            const timer = setTimeout(() => {
-                generateQR(false);
-            }, 800);
-            return () => clearTimeout(timer);
+        // 즉시 잠금: 설정이 변경되었고 마지막 생성 시점과 다를 때만 자동 갱신
+        if (qrType === 'INSTANT') {
+            if (currentConfig !== lastGeneratedConfig) {
+                const timer = setTimeout(() => {
+                    generateQR(false);
+                }, 800);
+                return () => clearTimeout(timer);
+            }
+            setIsStale(false);
+        } else {
+            // 예약 잠금: QR이 이미 생성된 상태(qrValue 존재)에서 설정이 달라진 경우만 안내 표시
+            if (qrValue && lastGeneratedConfig && currentConfig !== lastGeneratedConfig) {
+                setIsStale(true);
+            } else {
+                setIsStale(false);
+            }
         }
-    }, [selectedPresetId, selectedCategories, duration, lockTitle, qrType, selectedChildId]);
+    }, [currentConfig, lastGeneratedConfig, qrValue, qrType]);
 
     const loadData = async () => {
         setIsLoadingPresets(true);
@@ -147,15 +181,18 @@ export const QRGeneratorScreen: React.FC = () => {
         // 자동 갱신인데 선택된게 없으면 무시
         if (!manual && !selectedPresetId && selectedCategories.length === 0) return;
 
+        let timeWindow: string | undefined = undefined;
+        let days: string[] | undefined = undefined;
+        let finalDuration = duration;
+
         try {
             setQrValue(""); // 생성 시작 시 이전 값 초기화하여 혼선 방지
             console.log(`[QRGenerator] Generating ${qrType} QR for child ${selectedChildId}...`);
 
             let qr_type: 'DYNAMIC' | 'STATIC' = 'DYNAMIC';
-            let purpose: 'LOCK_ONLY' | 'LOCK_AND_ATTENDANCE' = qrType === 'INSTANT' ? 'LOCK_ONLY' : 'LOCK_AND_ATTENDANCE';
-            let timeWindow: string | undefined = undefined;
-            let days: string[] | undefined = undefined;
-            let finalDuration = duration;
+
+            const selectedPreset = presets.find(p => p.id === selectedPresetId);
+            let purpose: any = selectedPreset?.purpose || (qrType === 'INSTANT' ? 'LOCK_ONLY' : 'LOCK_AND_ATTENDANCE');
 
             if (qrType === 'SCHEDULED') {
                 const sStr = `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`;
@@ -173,37 +210,38 @@ export const QRGeneratorScreen: React.FC = () => {
                 preset_id: selectedPresetId || undefined,
                 duration_minutes: finalDuration,
                 title: lockTitle,
-                blocked_apps: selectedApps, // Legacy support
-                blocked_categories: selectedCategories, // Category based locking
+                blocked_apps: selectedApps,
+                blocked_categories: selectedCategories,
                 time_window: timeWindow,
                 days: days,
                 one_time: qrType === 'INSTANT'
             });
 
             if (result && result.success) {
-                // Add target child info to payload if needed by scanner,
-                // but usually the scanner just applies the policy.
-                // If it's for a specific child, the backend might handle it.
-                // For now, we use the returned payload.
                 setQrValue(result.payload || result.qr_id);
+                setLastGeneratedConfig(currentConfig);
+                setIsStale(false);
             } else {
-                // Fallback
-                const fallback = {
-                    v: 1,
-                    type: qrType,
-                    title: lockTitle,
-                    duration: finalDuration,
-                    apps: selectedApps,
-                    presetId: selectedPresetId,
-                    childId: selectedChildId,
-                    window: timeWindow,
-                    days: days,
-                    exp: Math.floor(Date.now() / 1000) + 3600
-                };
-                setQrValue(JSON.stringify(fallback));
+                throw new Error(result?.message || "QR 생성 응답이 올바르지 않습니다.");
             }
         } catch (error) {
             console.error("[QRGenerator] Failed to generate QR:", error);
+            // Fallback (Offline or Error)
+            const fallback = {
+                v: 1,
+                type: qrType,
+                title: lockTitle,
+                duration: finalDuration,
+                apps: selectedApps,
+                presetId: selectedPresetId,
+                childId: selectedChildId,
+                window: timeWindow,
+                days: days,
+                exp: Math.floor(Date.now() / 1000) + 3600
+            };
+            setQrValue(JSON.stringify(fallback));
+            setLastGeneratedConfig(currentConfig);
+            setIsStale(false);
         }
     };
 
@@ -329,13 +367,23 @@ export const QRGeneratorScreen: React.FC = () => {
             <View style={styles.tabContainer}>
                 <TouchableOpacity
                     style={[styles.tab, qrType === 'INSTANT' && styles.activeTab]}
-                    onPress={() => setQrType('INSTANT')}
+                    onPress={() => {
+                        setQrType('INSTANT');
+                        setQrValue("");
+                        setLastGeneratedConfig("");
+                        setIsStale(false);
+                    }}
                 >
                     <Typography bold={qrType === 'INSTANT'} color={qrType === 'INSTANT' ? Colors.primary : Colors.textSecondary}>즉시 잠금</Typography>
                 </TouchableOpacity>
                 <TouchableOpacity
                     style={[styles.tab, qrType === 'SCHEDULED' && styles.activeTab]}
-                    onPress={() => setQrType('SCHEDULED')}
+                    onPress={() => {
+                        setQrType('SCHEDULED');
+                        setQrValue("");
+                        setLastGeneratedConfig("");
+                        setIsStale(false);
+                    }}
                 >
                     <Typography bold={qrType === 'SCHEDULED'} color={qrType === 'SCHEDULED' ? Colors.primary : Colors.textSecondary}>예약 잠금</Typography>
                 </TouchableOpacity>
@@ -481,19 +529,52 @@ export const QRGeneratorScreen: React.FC = () => {
                 </View>
 
                 <View style={styles.qrContainer}>
-                    <ViewShot ref={cardRef} options={{ format: 'png', quality: 0.9 }}>
-                        <QRCard
-                            title={lockTitle || (qrType === 'INSTANT' ? '바로 잠금' : '예약 잠금')}
-                            subtitle={qrSubtitle}
-                            value={qrValue || 'WAITING_FOR_GENERATION'}
-                        />
-                    </ViewShot>
+                    {qrValue ? (
+                        <>
+                            {isStale && (
+                                <View style={styles.staleNotice}>
+                                    <Icon name="alert-circle" size={16} color={Colors.primary} />
+                                    <Typography variant="caption" color={Colors.primary} bold>설정이 변경되었습니다. QR을 갱신해주세요.</Typography>
+                                </View>
+                            )}
+                            <ViewShot ref={cardRef} options={{ format: 'png', quality: 0.9 }}>
+                                <QRCard
+                                    title={lockTitle || (qrType === 'INSTANT' ? '바로 잠금' : '예약 잠금')}
+                                    subtitle={qrSubtitle}
+                                    value={qrValue}
+                                />
+                            </ViewShot>
+                        </>
+                    ) : (
+                        <View style={styles.emptyQrBox}>
+                            <Icon name="qr-code-outline" size={60} color={Colors.border} />
+                            <Typography color={Colors.textSecondary} style={{ marginTop: 12 }}>
+                                {qrType === 'SCHEDULED' ? '조건 설정 후 아래 생성 버튼을 눌러주세요' : 'QR를 생성 중입니다...'}
+                            </Typography>
+                        </View>
+                    )}
                 </View>
 
                 <View style={styles.actionContainer}>
-                    <TouchableOpacity style={styles.generateButton} onPress={() => generateQR(true)}>
-                        <Icon name="refresh-outline" size={20} color="#FFF" />
-                        <Typography bold color="#FFF">QR 생성/갱신</Typography>
+                    <TouchableOpacity
+                        style={[
+                            styles.generateButton,
+                            isStale && { backgroundColor: Colors.primary, borderWidth: 2, borderColor: '#FFF' },
+                            !qrValue && qrType === 'SCHEDULED' && { backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.primary }
+                        ]}
+                        onPress={() => generateQR(true)}
+                    >
+                        <Icon
+                            name={isStale ? "refresh-outline" : (qrValue ? "checkmark-circle" : "qr-code-outline")}
+                            size={20}
+                            color={(!qrValue && qrType === 'SCHEDULED') ? Colors.primary : "#FFF"}
+                        />
+                        <Typography
+                            bold
+                            color={(!qrValue && qrType === 'SCHEDULED') ? Colors.primary : "#FFF"}
+                        >
+                            {qrValue ? (isStale ? "설정 반영하여 갱신" : "QR 생성 완료") : "QR 코드 생성하기"}
+                        </Typography>
                     </TouchableOpacity>
 
                     <View style={styles.secondaryActions}>
@@ -508,9 +589,12 @@ export const QRGeneratorScreen: React.FC = () => {
                                 <Typography bold>이미지 저장</Typography>
                             </TouchableOpacity>
                         )}
-                        <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
-                            <Icon name="share-outline" size={20} color="#FFF" />
-                            <Typography bold color="#FFF">공유</Typography>
+                        <TouchableOpacity
+                            style={[styles.shareButton, { flex: 1, backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border }]}
+                            onPress={handleShare}
+                        >
+                            <Icon name="share-outline" size={20} color={Colors.primary} />
+                            <Typography bold color={Colors.primary}>공유하기</Typography>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -580,7 +664,7 @@ export const QRGeneratorScreen: React.FC = () => {
                                         <Icon name="chevron-up" size={24} color={Colors.primary} />
                                     </TouchableOpacity>
                                     <View style={[styles.timeValueBtn, { minWidth: 70, justifyContent: 'center', alignItems: 'center' }]}>
-                                        <Typography variant="h1" bold>{((pickerTarget === 'start' ? startTime : endTime).getHours() + 11) % 12 + 1}시</Typography>
+                                        <Typography variant="h1" bold>{(pickerTarget === 'start' ? startTime : endTime).getHours() % 12 || 12}시</Typography>
                                     </View>
                                     <TouchableOpacity
                                         style={styles.timeAdjustBtn}
@@ -601,7 +685,8 @@ export const QRGeneratorScreen: React.FC = () => {
                                         style={styles.timeAdjustBtn}
                                         onPress={() => {
                                             const current = pickerTarget === 'start' ? startTime : endTime;
-                                            let newMin = current.getMinutes() + 5;
+                                            const mins = current.getMinutes();
+                                            let newMin = (Math.floor(mins / 5) * 5) + 5;
                                             if (newMin >= 60) newMin = 0;
                                             handleMinuteChange(newMin.toString(), pickerTarget === 'start');
                                         }}
@@ -615,7 +700,8 @@ export const QRGeneratorScreen: React.FC = () => {
                                         style={styles.timeAdjustBtn}
                                         onPress={() => {
                                             const current = pickerTarget === 'start' ? startTime : endTime;
-                                            let newMin = current.getMinutes() - 5;
+                                            const mins = current.getMinutes();
+                                            let newMin = (Math.ceil(mins / 5) * 5) - 5;
                                             if (newMin < 0) newMin = 55;
                                             handleMinuteChange(newMin.toString(), pickerTarget === 'start');
                                         }}
@@ -669,7 +755,9 @@ const styles = StyleSheet.create({
     generateButton: { flexDirection: 'row', backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 14, justifyContent: 'center', alignItems: 'center', gap: 10 },
     secondaryActions: { flexDirection: 'row', gap: 12 },
     downloadButton: { flex: 1, flexDirection: 'row', backgroundColor: Colors.card, paddingVertical: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: Colors.border },
-    shareButton: { flex: 1, flexDirection: 'row', backgroundColor: Colors.text, paddingVertical: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center', gap: 8 },
+    shareButton: { flex: 1, flexDirection: 'row', backgroundColor: Colors.card, paddingVertical: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: Colors.border },
+    staleNotice: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Colors.primary + '15', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, marginBottom: 12 },
+    emptyQrBox: { width: '100%', minHeight: 400, backgroundColor: Colors.card, borderRadius: 24, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: Colors.border, borderStyle: 'dashed' },
     modalContainer: { flex: 1, backgroundColor: Colors.background },
     categoryItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: Colors.border, marginHorizontal: 20 },
     checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: Colors.border, justifyContent: 'center', alignItems: 'center' },

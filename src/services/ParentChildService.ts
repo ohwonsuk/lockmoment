@@ -6,6 +6,8 @@ export interface ChildInfo {
     deviceName?: string;
     deviceModel?: string;
     status: 'LOCKED' | 'UNLOCKED' | 'OFFLINE';
+    lockName?: string; // 활성 잠금 이름
+    lockEndsAt?: string; // 잠금 종료 시간
     lastSeenAt?: string;
     hasPermission?: boolean; // 권한 동의 여부
 }

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { StorageService } from '../services/StorageService';
 
-export type Screen = 'Dashboard' | 'Settings' | 'Permissions' | 'History' | 'Locking' | 'AddSchedule' | 'AppSelect' | 'NotificationSettings' | 'Login' | 'QRScanner' | 'QRGenerator' | 'TeacherClass' | 'Join' | 'JoinComplete' | 'LinkSubUser' | 'JoinInfo' | 'PermissionGuide' | 'AdminSchedule' | 'AppleJoin' | 'Children' | 'ChildDetail' | 'QR' | 'Notification' | 'MyInfo' | 'TabletKiosk';
+export type Screen = 'Dashboard' | 'Settings' | 'Permissions' | 'History' | 'Locking' | 'AddSchedule' | 'AppSelect' | 'NotificationSettings' | 'Login' | 'QRScanner' | 'QRGenerator' | 'TeacherClass' | 'Join' | 'JoinComplete' | 'LinkSubUser' | 'JoinInfo' | 'PermissionGuide' | 'AdminSchedule' | 'AppleJoin' | 'Children' | 'ChildDetail' | 'QR' | 'Notification' | 'MyInfo' | 'TabletKiosk' | 'ScheduleList';
 
 interface NavigationContextType {
     currentScreen: Screen;

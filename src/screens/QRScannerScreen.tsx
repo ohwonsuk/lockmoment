@@ -6,11 +6,12 @@ import { Colors } from '../theme/Colors';
 import { Header } from '../components/Header';
 import { Icon } from '../components/Icon';
 import { useAppNavigation } from '../navigation/NavigationContext';
-import { StorageService } from '../services/StorageService';
+import { StorageService, Schedule } from '../services/StorageService';
 import { NativeLockControl } from '../services/NativeLockControl';
 import { QrService, QrScanResponse } from '../services/QrService';
 import { ParentChildService } from '../services/ParentChildService';
 import { UniversalAppMapper } from '../services/UniversalAppMapper';
+import { LockService } from '../services/LockService';
 import { MetaDataService, AppCategory } from '../services/MetaDataService';
 import { Platform } from 'react-native';
 
@@ -30,9 +31,13 @@ export const QRScannerScreen: React.FC = () => {
     const [isRegistrationModalVisible, setIsRegistrationModalVisible] = useState(false);
     const [isApplying, setIsApplying] = useState(false);
     const [allCategories, setAllCategories] = useState<AppCategory[]>([]);
+    const [userRole, setUserRole] = useState<string | null>(null);
 
     useEffect(() => {
-        const loadCategories = async () => {
+        const loadInitialData = async () => {
+            const role = await StorageService.getUserRole();
+            setUserRole(role);
+
             const categories = await MetaDataService.getAppCategories();
             setAllCategories(categories);
         };
@@ -52,7 +57,7 @@ export const QRScannerScreen: React.FC = () => {
             }
         };
 
-        loadCategories();
+        loadInitialData();
         checkPermission();
     }, []);
 
@@ -98,6 +103,10 @@ export const QRScannerScreen: React.FC = () => {
                 } else if (response.lockPolicy) {
                     setScanResult(response.lockPolicy);
                     setIsConfirmModalVisible(true);
+                } else if (response.purpose === 'ATTENDANCE_ONLY') {
+                    Alert.alert("출석 완료", "출석이 성공적으로 확인되었습니다.", [
+                        { text: "확인", onPress: () => navigate('Dashboard') }
+                    ]);
                 } else {
                     throw new Error("처리할 수 없는 QR 데이터입니다.");
                 }
@@ -191,7 +200,7 @@ export const QRScannerScreen: React.FC = () => {
                 return;
             }
 
-            const { name, durationMinutes, allowedApps, preventAppRemoval, lock_type } = scanResult;
+            const { name, durationMinutes, allowedApps, preventAppRemoval, lock_type, timeWindow, days } = scanResult;
             const durationMs = durationMinutes * 60 * 1000;
 
             const nativeAppIds = UniversalAppMapper.mapToNative(allowedApps || [], platform);
@@ -216,19 +225,46 @@ export const QRScannerScreen: React.FC = () => {
                 }
             }
 
-            // 잠금 실행
-            await NativeLockControl.startLock(
-                durationMs,
-                lock_type || 'APP',
-                name || "QR 잠금",
-                JSON.stringify(nativeAppIds),
-                prevent
-            );
+            // 잠금 실행 (예약 vs 즉시)
+            if (timeWindow && days && days.length > 0) {
+                const [start, end] = timeWindow.split('-');
 
-            setIsConfirmModalVisible(false);
-            Alert.alert("잠금 활성화", `[${name}] 집중 모드가 시작되었습니다.`, [
-                { text: "확인", onPress: () => navigate('Dashboard') }
-            ]);
+                // 1. Save to Storage for persistence and list visibility
+                const newSchedule: Schedule = {
+                    id: `qr_${Date.now()}`,
+                    name: name || "예약 잠금",
+                    startTime: start,
+                    endTime: end,
+                    days: days,
+                    lockType: lock_type || 'APP',
+                    isActive: true,
+                    lockedApps: nativeAppIds,
+                    source: 'LOCAL',
+                    isReadOnly: userRole === 'STUDENT' || userRole === 'CHILD'
+                };
+                await StorageService.saveSchedule(newSchedule);
+
+                // 2. Sync with Native (LockService handles scheduling)
+                await LockService.syncSchedules();
+
+                setIsConfirmModalVisible(false);
+                Alert.alert("예약 등록 완료", `[${name}] 예약 잠금이 등록되었습니다.\n설정된 시간에 자동으로 잠금이 시작됩니다.`, [
+                    { text: "확인", onPress: () => navigate('Dashboard') }
+                ]);
+            } else {
+                await NativeLockControl.startLock(
+                    durationMs,
+                    lock_type || 'APP',
+                    name || "QR 잠금",
+                    JSON.stringify(nativeAppIds),
+                    prevent
+                );
+
+                setIsConfirmModalVisible(false);
+                Alert.alert("잠금 활성화", `[${name}] 집중 모드가 시작되었습니다.`, [
+                    { text: "확인", onPress: () => navigate('Dashboard') }
+                ]);
+            }
         } catch (error: any) {
             console.error("Lock Start Error:", error);
             Alert.alert("오류", "잠금을 시작하는 중 오류가 발생했습니다.");
@@ -290,7 +326,11 @@ export const QRScannerScreen: React.FC = () => {
 
                             <View style={styles.infoRow}>
                                 <Typography variant="caption" color={Colors.textSecondary}>잠금 시간</Typography>
-                                <Typography bold style={{ fontSize: 18 }}>{scanResult?.durationMinutes}분</Typography>
+                                <Typography bold style={{ fontSize: 18 }}>
+                                    {scanResult?.timeWindow && scanResult?.days ?
+                                        `${scanResult.timeWindow} (${scanResult.days.join(',')})` :
+                                        `${scanResult?.durationMinutes}분`}
+                                </Typography>
                             </View>
 
                             <View style={styles.infoRow}>

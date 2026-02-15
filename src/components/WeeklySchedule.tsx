@@ -60,6 +60,7 @@ export const WeeklySchedule: React.FC<Props> = ({ schedules, onToggle, onPressIt
                                     days: item.days,
                                     isActive: item.isActive
                                 }}
+                                isReadOnly={item.isReadOnly}
                                 onPress={() => onPressItem(item.id)}
                                 onToggle={onToggle}
                                 onGenerateQR={onGenerateQR}

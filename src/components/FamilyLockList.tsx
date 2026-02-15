@@ -40,6 +40,12 @@ export const FamilyLockList: React.FC<Props> = ({ children, onManage }) => {
                             <Typography variant="caption" color={Colors.textSecondary}>
                                 {child.deviceName || '기기 정보 없음'}
                             </Typography>
+                            {child.status === 'LOCKED' && child.lockName && (
+                                <Typography variant="caption" color={Colors.primary} style={{ marginTop: 4 }}>
+                                    {child.lockName}
+                                    {child.lockEndsAt && ` • ${new Date(child.lockEndsAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 종료`}
+                                </Typography>
+                            )}
                         </View>
                         <TouchableOpacity style={styles.manageBtn} onPress={() => onManage(child.id)}>
                             <Typography variant="caption" color={Colors.primary} bold>관리하기</Typography>

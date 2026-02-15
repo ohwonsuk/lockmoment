@@ -9,6 +9,9 @@ export interface Schedule {
     lockType: string;
     lockedApps?: string[];
     isActive: boolean;
+    isReadOnly?: boolean;
+    createdBy?: string;
+    source?: 'LOCAL' | 'SERVER';
 }
 
 export interface HistoryItem {

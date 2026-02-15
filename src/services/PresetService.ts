@@ -132,10 +132,12 @@ export class PresetService {
 
     /**
      * 추천 Preset 조회
+     * Lambda에서 /presets 엔드포인트를 사용하며, 역할에 따라 자동으로 필터링됨
      */
     static async getRecommendedPresets(): Promise<Preset[]> {
         try {
-            const response = await apiService.get<{ success: boolean; presets: Preset[] }>('/presets/recommended');
+            // /presets 엔드포인트는 사용자 역할에 따라 자동으로 HOME/SCHOOL/COMMON 필터링
+            const response = await apiService.get<{ success: boolean; presets: Preset[] }>('/presets');
             return response.presets || [];
         } catch (error) {
             console.error('[PresetService] getRecommendedPresets failed:', error);

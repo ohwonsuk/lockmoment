@@ -129,9 +129,8 @@ class LockManager private constructor(private val context: Context) {
             }
         }
         
-        if (preventAppRemoval) {
-            setUninstallBlocked(true)
-        }
+        // Always block uninstall when locked
+        setUninstallBlocked(true)
         
         updateDefaultApps()
         saveLockState()
@@ -161,7 +160,9 @@ class LockManager private constructor(private val context: Context) {
 
         addHistoryEntry(currentLockName, currentLockStartTime, System.currentTimeMillis(), status)
 
-        if (preventAppRemoval) {
+        // Check global setting to see if we should restore it
+        val globalSetting = prefs.getBoolean("globalPreventAppRemoval", false)
+        if (!globalSetting) {
             setUninstallBlocked(false)
         }
         

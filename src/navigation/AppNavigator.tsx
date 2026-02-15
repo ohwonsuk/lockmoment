@@ -28,6 +28,7 @@ import { ChildDetailScreen } from '../screens/ChildDetailScreen';
 // Placeholder screens for new tabs
 import { NotificationScreen } from '../screens/NotificationScreen';
 import { MyInfoScreen } from '../screens/MyInfoScreen';
+import { ScheduleListScreen } from '../screens/ScheduleListScreen';
 
 export const AppNavigator: React.FC = () => {
     const { currentScreen, currentParams } = useAppNavigation();
@@ -80,6 +81,8 @@ export const AppNavigator: React.FC = () => {
                 return <NotificationScreen />;
             case 'MyInfo':
                 return <MyInfoScreen />;
+            case 'ScheduleList':
+                return <ScheduleListScreen />;
             case 'TabletKiosk':
                 return <TabletKioskScreen />;
             case 'ChildDetail':
@@ -90,7 +93,7 @@ export const AppNavigator: React.FC = () => {
     };
 
     const isTabBarVisible = () => {
-        const mainTabs = ['Dashboard', 'Children', 'QR', 'Notification', 'MyInfo', 'Settings'];
+        const mainTabs = ['Dashboard', 'Children', 'QR', 'Notification', 'MyInfo', 'Settings', 'ScheduleList', 'History'];
         return mainTabs.includes(currentScreen);
     };
 

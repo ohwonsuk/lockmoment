@@ -343,6 +343,74 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
 
 ---
 
+---
+
+## 📱 잠금 관리 API
+
+### 9. 잠금 시작
+`POST /locks/start`
+자녀 기기에서 잠금을 시작하고 서버에 상태를 기록합니다.
+
+**Request**:
+```json
+{
+  "device_id": "uuid",
+  "lock_name": "바로 잠금",
+  "lock_type": "FULL | APP",
+  "duration_minutes": 60,
+  "source": "MANUAL | SCHEDULED | QR | PRESET",
+  "allowed_apps": ["com.example.app"],
+  "blocked_apps": ["com.game.app"],
+  "prevent_app_removal": true
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "잠금이 시작되었습니다",
+  "lock": {
+    "id": "uuid",
+    "lock_name": "바로 잠금",
+    "ends_at": "2026-02-15T10:00:00Z",
+    "prevent_app_removal": true
+  }
+}
+```
+
+### 10. 잠금 종료
+`POST /locks/stop`
+자녀 기기에서 잠금을 종료하고 서버 상태를 업데이트합니다.
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "잠금이 종료되었습니다"
+}
+```
+
+### 11. 현재 잠금 상태 조회
+`GET /locks/status`
+현재 사용자의 활성화된 잠금 상태를 조회합니다.
+
+**Response**:
+```json
+{
+  "success": true,
+  "isLocked": true,
+  "lock": {
+    "id": "uuid",
+    "lock_name": "바로 잠금",
+    "type": "FULL",
+    "ends_at": "2026-02-15T10:00:00Z"
+  }
+}
+```
+
+---
+
 ## 🔧 에러 응답 코드
 
 | 코드 | 설명 | 대응 방법 |

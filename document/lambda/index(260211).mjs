@@ -518,6 +518,119 @@ export const handler = async (event) => {
         }
 
         // ========================================
+        // 잠금 상태 관리 엔드포인트 (JWT 필요)
+        // ========================================
+
+        // POST /locks/start - 잠금 시작 (active_locks에 기록)
+        if (httpMethod === 'POST' && path === '/locks/start') {
+            const user = await requireAuth(event);
+
+            const {
+                device_id,
+                lock_name,
+                lock_type,
+                duration_minutes,
+                lock_policy_id,
+                preset_id,
+                allowed_apps,
+                blocked_apps,
+                prevent_app_removal,
+                source,
+                initiated_by
+            } = data;
+
+            if (!lock_name || !lock_type || !duration_minutes) {
+                return response(400, {
+                    success: false,
+                    message: 'lock_name, lock_type, duration_minutes는 필수입니다'
+                });
+            }
+
+            const endsAt = new Date(Date.now() + duration_minutes * 60 * 1000);
+
+            // 기존 활성 잠금이 있다면 종료 처리
+            await client.query(
+                `DELETE FROM active_locks 
+                 WHERE user_id = $1 AND ends_at > NOW()`,
+                [user.userId]
+            );
+
+            // 새 잠금 등록
+            const result = await client.query(
+                `INSERT INTO active_locks (
+                    user_id, device_id, lock_name, lock_type, ends_at,
+                    lock_policy_id, preset_id, allowed_apps, blocked_apps,
+                    prevent_app_removal, source, initiated_by
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                RETURNING *`,
+                [
+                    user.userId,
+                    device_id || null,
+                    lock_name,
+                    lock_type,
+                    endsAt,
+                    lock_policy_id || null,
+                    preset_id || null,
+                    allowed_apps ? JSON.stringify(allowed_apps) : null,
+                    blocked_apps ? JSON.stringify(blocked_apps) : null,
+                    prevent_app_removal || false,
+                    source || 'MANUAL',
+                    initiated_by || user.userId
+                ]
+            );
+
+            return response(201, {
+                success: true,
+                message: '잠금이 시작되었습니다',
+                lock: result.rows[0]
+            });
+        }
+
+        // POST /locks/stop - 잠금 종료 (active_locks에서 삭제)
+        if (httpMethod === 'POST' && path === '/locks/stop') {
+            const user = await requireAuth(event);
+
+            const result = await client.query(
+                `DELETE FROM active_locks 
+                 WHERE user_id = $1 AND ends_at > NOW()
+                 RETURNING *`,
+                [user.userId]
+            );
+
+            if (result.rows.length === 0) {
+                return response(404, {
+                    success: false,
+                    message: '활성화된 잠금이 없습니다'
+                });
+            }
+
+            return response(200, {
+                success: true,
+                message: '잠금이 종료되었습니다',
+                lock: result.rows[0]
+            });
+        }
+
+        // GET /locks/status - 현재 잠금 상태 조회
+        if (httpMethod === 'GET' && path === '/locks/status') {
+            const user = await requireAuth(event);
+
+            const result = await client.query(
+                `SELECT * FROM active_locks 
+                 WHERE user_id = $1 AND ends_at > NOW()
+                 ORDER BY created_at DESC
+                 LIMIT 1`,
+                [user.userId]
+            );
+
+            return response(200, {
+                success: true,
+                isLocked: result.rows.length > 0,
+                lock: result.rows[0] || null
+            });
+        }
+
+        // ========================================
         // Preset 엔드포인트 (모두 JWT 필요)
         // ========================================
 
@@ -538,7 +651,7 @@ export const handler = async (event) => {
                 query += ` AND scope = $${params.length}`;
             } else {
                 params.push(user.userId);
-                query += ` AND (scope = 'SYSTEM' OR (scope = 'USER' AND created_by = $${params.length}))`;
+                query += ` AND (scope = 'SYSTEM' OR (scope = 'USER' AND owner_id = $${params.length}))`;
             }
 
             // 2. Category 필터링 (부모/교사 역할에 따른 자동 추천)
@@ -587,7 +700,7 @@ export const handler = async (event) => {
                 `INSERT INTO preset_policies (
           id, scope, name, description, purpose, lock_type,
           allowed_categories, blocked_categories, allowed_apps,
-          default_duration_minutes, created_by, created_at, updated_at
+          default_duration_minutes, owner_id, created_at, updated_at
         ) VALUES ($1, 'USER', $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
         RETURNING *`,
                 [
@@ -683,39 +796,54 @@ export const handler = async (event) => {
                 }
 
                 const preset = presetResult.rows[0];
-                policyId = getUUID();
-                await client.query(
-                    `INSERT INTO lock_policies (
-                        id, preset_id, lock_type, duration_minutes,
-                        allowed_categories, blocked_categories, allowed_apps,
-                        title, created_by, created_at
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())`,
-                    [
-                        policyId, presetId, preset.lock_type, data.duration_minutes || preset.default_duration_minutes,
-                        Array.isArray(preset.allowed_categories) ? preset.allowed_categories : [],
-                        Array.isArray(preset.blocked_categories) ? preset.blocked_categories : [],
-                        Array.isArray(preset.allowed_apps) ? preset.allowed_apps : [],
-                        data.title || preset.name || '사전 등록 잠금',
-                        user.userId
-                    ]
-                );
+
+                // 프리셋에 정의된 목적이 있으면 이를 따름
+                if (preset.purpose) {
+                    finalPurpose = preset.purpose;
+                }
+
+                // lock_type이 있는 경우에만 정책 생성 (출석 전용 등은 정책 생성 생략)
+                if (preset.lock_type) {
+                    policyId = getUUID();
+                    await client.query(
+                        `INSERT INTO lock_policies (
+                            id, preset_id, lock_type, duration_minutes,
+                            allowed_categories, blocked_categories, allowed_apps,
+                            time_window, days,
+                            title, created_by, created_at
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
+                        [
+                            policyId, presetId, preset.lock_type, data.duration_minutes || preset.default_duration_minutes,
+                            JSON.stringify(Array.isArray(preset.allowed_categories) ? preset.allowed_categories : []),
+                            JSON.stringify(Array.isArray(preset.blocked_categories) ? preset.blocked_categories : []),
+                            JSON.stringify(Array.isArray(preset.allowed_apps) ? preset.allowed_apps : []),
+                            data.time_window || preset.time_window || null,
+                            data.days ? JSON.stringify(data.days) : (preset.days ? JSON.stringify(preset.days) : null),
+                            data.title || preset.name || '사전 등록 잠금',
+                            user.userId
+                        ]
+                    );
+                }
             }
             // 2. 직접 앱/카테고리 차단 정보를 보낸 경우 (직접 설정)
-            else if (data.blocked_apps || data.allowed_apps || data.blocked_categories || data.allowed_categories) {
+            else if (data.blocked_apps || data.allowed_apps || data.blocked_categories || data.allowed_categories || data.time_window) {
                 policyId = getUUID();
                 await client.query(
                     `INSERT INTO lock_policies (
                         id, lock_type, duration_minutes,
                         allowed_apps, allowed_categories, blocked_categories, 
+                        time_window, days,
                         title, created_by, created_at
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())`,
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())`,
                     [
                         policyId,
-                        data.lock_type || (data.blocked_categories || data.allowed_categories ? 'APP_ONLY' : 'APP_ONLY'), // Default to APP_ONLY if not specified
+                        data.lock_type || 'APP_ONLY',
                         data.duration_minutes || 60,
-                        Array.isArray(data.allowed_apps) ? data.allowed_apps : [],
-                        Array.isArray(data.allowed_categories) ? data.allowed_categories : [],
-                        Array.isArray(data.blocked_categories) ? data.blocked_categories : [],
+                        JSON.stringify(Array.isArray(data.allowed_apps) ? data.allowed_apps : []),
+                        JSON.stringify(Array.isArray(data.allowed_categories) ? data.allowed_categories : []),
+                        JSON.stringify(Array.isArray(data.blocked_categories) ? data.blocked_categories : []),
+                        data.time_window || null,
+                        data.days ? JSON.stringify(data.days) : null,
                         data.title || '바로 잠금',
                         user.userId
                     ]
@@ -856,7 +984,8 @@ export const handler = async (event) => {
 
             // QR 정보 조회
             const qrResult = await client.query(
-                `SELECT q.*, p.lock_type, p.duration_minutes, p.allowed_apps, p.allowed_categories, p.blocked_categories, p.title as policy_title,
+                `SELECT q.*, p.lock_type, p.duration_minutes, p.allowed_apps, p.allowed_categories, p.blocked_categories, 
+                        p.time_window, p.days, p.title as policy_title,
                  (SELECT COUNT(*) FROM qr_device_usage WHERE qr_id = q.id) as current_uses
           FROM qr_codes q
           LEFT JOIN lock_policies p ON q.lock_policy_id = p.id
@@ -947,7 +1076,9 @@ export const handler = async (event) => {
                     durationMinutes: qrInfo.duration_minutes,
                     allowedApps: Array.isArray(qrInfo.allowed_apps) ? qrInfo.allowed_apps : [],
                     allowedCategories: Array.isArray(qrInfo.allowed_categories) ? qrInfo.allowed_categories : [],
-                    blockedCategories: Array.isArray(qrInfo.blocked_categories) ? qrInfo.blocked_categories : []
+                    blockedCategories: Array.isArray(qrInfo.blocked_categories) ? qrInfo.blocked_categories : [],
+                    timeWindow: qrInfo.time_window,
+                    days: Array.isArray(qrInfo.days) ? qrInfo.days : (typeof qrInfo.days === 'string' ? JSON.parse(qrInfo.days) : qrInfo.days)
                 };
             }
 
@@ -982,7 +1113,7 @@ export const handler = async (event) => {
         // 부모-자녀 엔드포인트 (모두 JWT 필요)
         // ========================================
 
-        // GET /parent-child/children - 자녀 목록 조회
+        // GET /parent-child/children - 자녀 목록 조회 (잠금 상태 포함)
         if (httpMethod === 'GET' && path === '/parent-child/children') {
             const user = await requireAuth(event);
 
@@ -991,12 +1122,22 @@ export const handler = async (event) => {
                     pc.child_user_id, 
                     COALESCE(pc.nickname, u.display_name) as child_name, 
                     u.email as child_email,
-                    d.id as device_id, d.platform, d.device_model, d.accessibility_permission,
-                    d.screen_time_permission, d.notification_permission, d.status as device_status,
-                    d.updated_at as device_updated_at
+                    d.id as device_id, 
+                    d.platform, 
+                    d.device_model, 
+                    d.accessibility_permission,
+                    d.screen_time_permission, 
+                    d.notification_permission, 
+                    d.status as device_status,
+                    d.updated_at as device_updated_at,
+                    al.id as active_lock_id,
+                    al.lock_name,
+                    al.ends_at as lock_ends_at
                  FROM parent_child_relations pc
                  JOIN users u ON pc.child_user_id = u.id
                  LEFT JOIN devices d ON d.user_id = pc.child_user_id
+                 LEFT JOIN active_locks al ON al.user_id = pc.child_user_id 
+                    AND al.ends_at > NOW()
                  WHERE pc.parent_user_id = $1
                  ORDER BY pc.child_user_id, d.updated_at DESC NULLS LAST`,
                 [user.userId]
@@ -1004,16 +1145,30 @@ export const handler = async (event) => {
 
             return response(200, {
                 success: true,
-                data: result.rows.map(row => ({
-                    id: row.child_user_id,
-                    childName: row.child_name,
-                    email: row.child_email,
-                    deviceName: row.platform ? `${row.platform}` : null,
-                    deviceModel: row.device_model,
-                    status: row.device_status === 'ACTIVE' ? 'ONLINE' : 'OFFLINE',
-                    lastSeenAt: row.last_seen_at,
-                    hasPermission: row.platform === 'IOS' ? row.screen_time_permission === 'GRANTED' : row.accessibility_permission === 'GRANTED'
-                }))
+                data: result.rows.map(row => {
+                    // 활성 잠금이 있으면 LOCKED, 없으면 기기 상태에 따라 UNLOCKED/OFFLINE
+                    let lockStatus = 'UNLOCKED';
+                    if (row.active_lock_id) {
+                        lockStatus = 'LOCKED';
+                    } else if (row.device_status !== 'ACTIVE') {
+                        lockStatus = 'OFFLINE';
+                    }
+
+                    return {
+                        id: row.child_user_id,
+                        childName: row.child_name,
+                        email: row.child_email,
+                        deviceName: row.platform ? `${row.platform}` : null,
+                        deviceModel: row.device_model,
+                        status: lockStatus,
+                        lockName: row.lock_name || null,
+                        lockEndsAt: row.lock_ends_at || null,
+                        lastSeenAt: row.device_updated_at,
+                        hasPermission: row.platform === 'IOS'
+                            ? row.screen_time_permission === 'GRANTED'
+                            : row.accessibility_permission === 'GRANTED'
+                    };
+                })
             });
         }
 
@@ -1275,24 +1430,51 @@ export const handler = async (event) => {
             const pathParts = path.split('/');
             const childId = pathParts[pathParts.indexOf('parent-child') + 1];
 
-            // 권한 확인
-            const authCheck = await client.query(
-                'SELECT 1 FROM parent_child_relations WHERE parent_user_id = $1 AND child_user_id = $2',
-                [user.userId, childId]
-            );
-
-            if (authCheck.rows.length === 0) {
-                return response(403, { success: false, message: '권한이 없습니다' });
+            // 권한 확인: 본인이거나 연결된 부모인 경우 허용
+            if (user.userId !== childId) {
+                const authCheck = await client.query(
+                    'SELECT 1 FROM parent_child_relations WHERE parent_user_id = $1 AND child_user_id = $2',
+                    [user.userId, childId]
+                );
+                if (authCheck.rows.length === 0) {
+                    return response(403, { success: false, message: '권한이 없습니다' });
+                }
             }
 
             const result = await client.query(
-                'SELECT * FROM child_schedules WHERE child_user_id = $1 AND status = \'ACTIVE\' ORDER BY start_time',
+                `SELECT cs.*, 
+                        (SELECT json_agg(DISTINCT day) FROM child_schedule_days WHERE schedule_id = cs.id) as days_list
+                 FROM child_schedules cs 
+                 WHERE cs.child_user_id = $1 AND cs.status = 'ACTIVE' 
+                 ORDER BY cs.start_time`,
                 [childId]
             );
 
+            // 요일 매핑 및 CamelCase 변환
+            const revDayMap = { 'MON': '월', 'TUE': '화', 'WED': '수', 'THU': '목', 'FRI': '금', 'SAT': '토', 'SUN': '일' };
+            const mappedRows = result.rows.map(row => {
+                const startTime = row.start_time ? row.start_time.split(':').slice(0, 2).join(':') : "";
+                const endTime = row.end_time ? row.end_time.split(':').slice(0, 2).join(':') : "";
+                const days = Array.isArray(row.days_list) ? row.days_list.map(d => revDayMap[d] || d) : [];
+
+                return {
+                    id: row.id,
+                    name: row.name,
+                    startTime,
+                    endTime,
+                    days,
+                    isActive: row.status === 'ACTIVE',
+                    status: row.status,
+                    createdBy: row.created_by,
+                    description: row.description,
+                    createdAt: row.created_at,
+                    updatedAt: row.updated_at
+                };
+            });
+
             return response(200, {
                 success: true,
-                data: result.rows
+                data: mappedRows
             });
         }
 
@@ -1312,23 +1494,36 @@ export const handler = async (event) => {
                 return response(403, { success: false, message: '권한이 없습니다' });
             }
 
-            const { name, start_time, end_time, days_of_week, allowed_apps, blocked_categories } = data;
+            const { name, isActive } = data;
+            const start_time = data.start_time || data.startTime;
+            const end_time = data.end_time || data.endTime;
+            const days_of_week = data.days_of_week || data.days || [];
+            const allowed_apps = data.allowed_apps || data.apps || [];
+
+            const status = (data.isActive !== false) ? 'ACTIVE' : 'PAUSED';
 
             const scheduleId = getUUID();
             const result = await client.query(
                 `INSERT INTO child_schedules (
           id, child_user_id, name, start_time, end_time, status, created_by, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, 'ACTIVE', $6, NOW(), NOW())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
         RETURNING *`,
-                [scheduleId, childId, name, start_time, end_time, user.userId]
+                [scheduleId, childId, name, start_time, end_time, status, user.userId]
             );
 
             // 요일 정보 저장 (child_schedule_days 테이블)
             if (days_of_week && Array.isArray(days_of_week)) {
+                const dayMap = {
+                    '월': 'MON', '화': 'TUE', '수': 'WED', '목': 'THU', '금': 'FRI', '토': 'SAT', '일': 'SUN',
+                    'Monday': 'MON', 'Tuesday': 'TUE', 'Wednesday': 'WED', 'Thursday': 'THU', 'Friday': 'FRI', 'Saturday': 'SAT', 'Sunday': 'SUN',
+                    'MON': 'MON', 'TUE': 'TUE', 'WED': 'WED', 'THU': 'THU', 'FRI': 'FRI', 'SAT': 'SAT', 'SUN': 'SUN'
+                };
+
                 for (const day of days_of_week) {
+                    const dbDay = dayMap[day] || day;
                     await client.query(
                         `INSERT INTO child_schedule_days (schedule_id, day) VALUES ($1, $2)`,
-                        [scheduleId, day]
+                        [scheduleId, dbDay]
                     );
                 }
             }

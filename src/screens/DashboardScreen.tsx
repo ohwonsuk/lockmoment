@@ -17,6 +17,7 @@ import { PresetService, Preset } from '../services/PresetService';
 import { PresetItem } from '../components/PresetItem';
 import DeviceInfo from 'react-native-device-info';
 import { FamilyLockList } from '../components/FamilyLockList';
+import { LockService } from '../services/LockService';
 
 export const DashboardScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
@@ -36,13 +37,16 @@ export const DashboardScreen: React.FC = () => {
 
     useEffect(() => {
         loadUserRole();
+    }, []);
+
+    useEffect(() => {
         refreshAll();
         restoreLock();
         timerRef.current = setInterval(updateStatus, 1000);
         return () => {
             if (timerRef.current) clearInterval(timerRef.current);
         };
-    }, []);
+    }, [userRole]);
 
     const loadUserRole = async () => {
         const role = await StorageService.getUserRole();
@@ -89,12 +93,17 @@ export const DashboardScreen: React.FC = () => {
 
     const refreshAll = () => {
         checkPermission();
-        loadSchedules();
+        syncAndLoadSchedules();
         updateStatus();
         if (userRole === 'PARENT' || userRole === 'TEACHER') {
             loadChildren();
             loadPresets();
         }
+    };
+
+    const syncAndLoadSchedules = async () => {
+        await LockService.syncSchedules();
+        loadSchedules();
     };
 
     const loadPresets = async () => {
@@ -117,8 +126,27 @@ export const DashboardScreen: React.FC = () => {
     };
 
     const loadSchedules = async () => {
+        // Load local + sync check
         const storedSchedules = await StorageService.getSchedules();
-        setSchedules(storedSchedules);
+        const profile = await StorageService.getUserProfile();
+
+        if ((userRole === 'STUDENT' || userRole === 'CHILD') && profile?.id) {
+            const remote = await ParentChildService.getChildSchedules(profile.id);
+            const combined: Schedule[] = [...storedSchedules.map(s => ({ ...s, isReadOnly: s.isReadOnly ?? false, source: 'LOCAL' as const }))];
+
+            remote.forEach(s => {
+                if (!combined.find(ex => ex.id === s.id)) {
+                    combined.push({
+                        ...s,
+                        isReadOnly: s.createdBy !== profile.id,
+                        source: 'SERVER'
+                    } as any);
+                }
+            });
+            setSchedules(combined);
+        } else {
+            setSchedules(storedSchedules);
+        }
     };
 
     const checkPermission = async () => {
@@ -147,6 +175,16 @@ export const DashboardScreen: React.FC = () => {
             const prevent = await StorageService.getPreventAppRemoval();
             const durationMs = (h * 3600 + m * 60) * 1000;
             await NativeLockControl.startLock(durationMs, type, "바로 잠금", packagesJson, prevent);
+
+            // Report to server for parent monitoring
+            await LockService.reportLockStart({
+                lockName: "바로 잠금",
+                lockType: type,
+                durationMinutes: h * 60 + m,
+                source: 'MANUAL',
+                preventAppRemoval: prevent
+            });
+
             updateStatus();
         } catch (error: any) {
             showAlert({ title: "오류", message: error.message });
@@ -161,6 +199,10 @@ export const DashboardScreen: React.FC = () => {
             cancelText: "취소",
             onConfirm: async () => {
                 await NativeLockControl.stopLock();
+
+                // Report to server
+                await LockService.reportLockStop();
+
                 updateStatus();
             }
         });

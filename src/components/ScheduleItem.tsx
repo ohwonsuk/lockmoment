@@ -17,9 +17,10 @@ interface Props {
     onPress?: () => void;
     onToggle?: (id: string) => void;
     onGenerateQR?: (id: string) => void;
+    isReadOnly?: boolean;
 }
 
-export const ScheduleItem: React.FC<Props> = ({ schedule, onPress, onToggle, onGenerateQR }) => {
+export const ScheduleItem: React.FC<Props> = ({ schedule, onPress, onToggle, onGenerateQR, isReadOnly }) => {
     return (
         <TouchableOpacity
             style={styles.container}
@@ -29,7 +30,12 @@ export const ScheduleItem: React.FC<Props> = ({ schedule, onPress, onToggle, onG
             <View style={styles.header}>
                 <Typography variant="h2" bold>{schedule.name}</Typography>
                 <View style={styles.headerRight}>
-                    {onGenerateQR && (
+                    {isReadOnly && (
+                        <View style={styles.readOnlyBadge}>
+                            <Typography variant="caption" color={Colors.primary} bold>읽기 전용</Typography>
+                        </View>
+                    )}
+                    {onGenerateQR && !isReadOnly && (
                         <TouchableOpacity
                             onPress={() => onGenerateQR(schedule.id)}
                             style={styles.qrIcon}
@@ -37,14 +43,18 @@ export const ScheduleItem: React.FC<Props> = ({ schedule, onPress, onToggle, onG
                             <Icon name="qr-code" size={20} color={Colors.primary} />
                         </TouchableOpacity>
                     )}
-                    <Switch
-                        value={schedule.isActive}
-                        onValueChange={() => onToggle?.(schedule.id)}
-                        trackColor={{ false: Colors.statusInactive, true: Colors.primary }}
-                        thumbColor={Colors.text}
-                        style={styles.switch}
-                    />
-                    <Icon name="chevron-forward" size={18} color={Colors.textSecondary} />
+                    {!isReadOnly && (
+                        <>
+                            <Switch
+                                value={schedule.isActive}
+                                onValueChange={() => onToggle?.(schedule.id)}
+                                trackColor={{ false: Colors.statusInactive, true: Colors.primary }}
+                                thumbColor={Colors.text}
+                                style={styles.switch}
+                            />
+                            <Icon name="chevron-forward" size={18} color={Colors.textSecondary} />
+                        </>
+                    )}
                 </View>
             </View>
 
@@ -98,5 +108,12 @@ const styles = StyleSheet.create({
     },
     daysText: {
         fontSize: 15,
+    },
+    readOnlyBadge: {
+        backgroundColor: Colors.primary + '15',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        marginRight: 8,
     },
 });
