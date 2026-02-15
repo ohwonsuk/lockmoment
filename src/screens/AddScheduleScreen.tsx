@@ -440,7 +440,11 @@ export const AddScheduleScreen: React.FC = () => {
                         </View>
 
                         <View style={styles.timeCard}>
-                            <Typography variant="caption" color={Colors.textSecondary} style={styles.timeLabel}>종료 시간</Typography>
+                            <Typography variant="caption" color={Colors.textSecondary} style={styles.timeLabel}>
+                                종료 시간 {(startTime.getHours() * 60 + startTime.getMinutes()) > (endTime.getHours() * 60 + endTime.getMinutes()) &&
+                                    <Typography variant="caption" color={Colors.primary} bold> (+1일)</Typography>
+                                }
+                            </Typography>
                             <View style={styles.pickerContainer}>
                                 {isIOS ? (
                                     <IOSPicker

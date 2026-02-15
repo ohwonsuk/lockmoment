@@ -350,30 +350,73 @@ export const handler = async (event) => {
             });
         }
 
-        // POST /auth/anonymous - 익명 사용자 생성
+        // POST /auth/anonymous - 익명 사용자 생성 (및 기기 기반 자동 복구)
         if (httpMethod === 'POST' && path === '/auth/anonymous') {
             const { deviceData } = data;
+            let userId = null;
+            let isLinked = false;
+            let role = 'CHILD';
 
-            // 익명 사용자 생성
-            const userId = getUUID();
-            await client.query(
-                `INSERT INTO users (id, auth_provider, created_at, updated_at)
-                 VALUES ($1, 'ANONYMOUS', NOW(), NOW())`,
-                [userId]
-            );
+            // 1. 디바이스 식별 기반 자동 복구 시도 (앱 재설치 대응)
+            if (deviceData?.deviceId) {
+                console.log(`[Auth] Checking device restoration for: ${deviceData.deviceId}`);
+                const deviceResult = await client.query(
+                    `SELECT d.user_id, ur.role
+                     FROM devices d
+                     JOIN user_roles ur ON d.user_id = ur.user_id
+                     WHERE d.device_uuid = $1 AND ur.role = 'CHILD'
+                     LIMIT 1`,
+                    [deviceData.deviceId]
+                );
 
-            // 역할 등록 (STUDENT -> CHILD 매핑 등 성격에 맞춰 ROLE_TYPE_ENUM 사용)
-            await client.query(
-                `INSERT INTO user_roles (user_id, role, scope_id, scope_type) VALUES ($1, 'CHILD', NULL, 'GLOBAL')`,
-                [userId]
-            );
+                if (deviceResult.rows.length > 0) {
+                    const potentialUserId = deviceResult.rows[0].user_id;
 
-            // 디바이스도 함께 등록
+                    // 해당 사용자가 실제로 부모와 연결되어 있는지 확인
+                    const relationResult = await client.query(
+                        `SELECT 1 FROM parent_child_relations 
+                         WHERE child_user_id = $1 
+                         LIMIT 1`,
+                        [potentialUserId]
+                    );
+
+                    if (relationResult.rows.length > 0) {
+                        console.log(`[Auth] Auto-restoring existing linked child: ${potentialUserId}`);
+                        userId = potentialUserId;
+                        role = deviceResult.rows[0].role;
+                        isLinked = true;
+                    }
+                }
+            }
+
+            // 2. 기존 사용자 정보를 찾지 못한 경우에만 새로운 익명 사용자 생성
+            if (!userId) {
+                userId = getUUID();
+                console.log(`[Auth] Creating new anonymous user: ${userId}`);
+                await client.query(
+                    `INSERT INTO users (id, auth_provider, created_at, updated_at)
+                     VALUES ($1, 'ANONYMOUS', NOW(), NOW())`,
+                    [userId]
+                );
+
+                await client.query(
+                    `INSERT INTO user_roles (user_id, role, scope_id, scope_type) 
+                     VALUES ($1, 'CHILD', NULL, 'GLOBAL')`,
+                    [userId]
+                );
+            }
+
+            // 3. 디바이스 정보 업데이트/연동
             if (deviceData) {
                 await client.query(
                     `INSERT INTO devices (id, user_id, device_uuid, platform, device_model, os_version, status, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE', NOW(), NOW())
-           ON CONFLICT (device_uuid) DO UPDATE SET user_id = $2, updated_at = NOW()`,
+                     VALUES ($1, $2, $3, $4, $5, $6, 'ACTIVE', NOW(), NOW())
+                     ON CONFLICT (device_uuid) DO UPDATE 
+                     SET user_id = EXCLUDED.user_id, 
+                         platform = EXCLUDED.platform,
+                         device_model = EXCLUDED.device_model,
+                         os_version = EXCLUDED.os_version,
+                         updated_at = NOW()`,
                     [
                         getUUID(),
                         userId,
@@ -385,8 +428,8 @@ export const handler = async (event) => {
                 );
             }
 
-            // JWT 토큰 생성
-            const accessToken = await generateAccessToken(userId, 'CHILD');
+            // 4. JWT 토큰 생성
+            const accessToken = await generateAccessToken(userId, role);
             const refreshToken = await generateRefreshToken(userId);
 
             return response(200, {
@@ -395,9 +438,9 @@ export const handler = async (event) => {
                 refreshToken,
                 user: {
                     id: userId,
-                    role: 'CHILD',
+                    role: role,
                     auth_provider: 'ANONYMOUS',
-                    is_linked: false // 신규 게스트는 항상 미연결 상태
+                    is_linked: isLinked
                 }
             });
         }
@@ -1750,6 +1793,27 @@ export const handler = async (event) => {
             return response(200, {
                 success: true,
                 categories: result.rows
+            });
+        }
+
+        // GET /meta/apps - 앱 목록 조회
+        if (httpMethod === 'GET' && path === '/meta/apps') {
+            const result = await client.query(`
+                SELECT 
+                    app_name, 
+                    array_agg(package_name) as package_names,
+                    MAX(category) as category
+                FROM app_category_map 
+                GROUP BY app_name 
+                ORDER BY app_name
+            `);
+            return response(200, {
+                success: true,
+                apps: result.rows.map(row => ({
+                    name: row.app_name,
+                    packageNames: row.package_names,
+                    category: row.category
+                }))
             });
         }
 

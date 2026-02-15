@@ -67,8 +67,51 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             store.application.denyAppRemoval = globalPrevent
         }
         
-        // 상태 업데이트
-        sharedDefaults.set(false, forKey: "isLocked")
+        // Only set isLocked = false if no other schedules are active
+        if !isAnyScheduleActive() {
+            sharedDefaults.set(false, forKey: "isLocked")
+            sharedDefaults.removeObject(forKey: "currentLockName")
+        }
+    }
+    
+    // Helper to check if any other schedule is active at this moment
+    private func isAnyScheduleActive() -> Bool {
+        let now = Date()
+        let calendar = Calendar.current
+        let weekday = calendar.component(.weekday, from: now)
+        let hour = calendar.component(.hour, from: now)
+        let minute = calendar.component(.minute, from: now)
+        let totalMinutes = hour * 60 + minute
+        
+        let yesterday = (weekday == 1) ? 7 : weekday - 1
+        let allKeys = sharedDefaults.dictionaryRepresentation().keys
+        
+        for checkWeekday in [yesterday, weekday] {
+            let suffix = "_\(checkWeekday)"
+            for key in allKeys where key.hasPrefix("policy_") && key.hasSuffix(suffix) {
+                if let policy = sharedDefaults.dictionary(forKey: key),
+                   let startH = policy["startHour"] as? Int,
+                   let startM = policy["startMinute"] as? Int,
+                   let endH = policy["endHour"] as? Int,
+                   let endM = policy["endMinute"] as? Int {
+                    
+                    let startTotal = startH * 60 + startM
+                    let endTotal = endH * 60 + endM
+                    let isOvernight = startTotal > endTotal
+                    
+                    if checkWeekday == weekday {
+                        if isOvernight {
+                            if totalMinutes >= startTotal { return true }
+                        } else {
+                            if totalMinutes >= startTotal && totalMinutes < endTotal { return true }
+                        }
+                    } else if isOvernight {
+                        if totalMinutes < endTotal { return true }
+                    }
+                }
+            }
+        }
+        return false
     }
     
     override func eventDidReachThreshold(_ event: DeviceActivityEvent.Name, activity: DeviceActivityName) {

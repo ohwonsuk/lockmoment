@@ -154,6 +154,10 @@ export const QRScannerScreen: React.FC = () => {
                     }
                 }
 
+                // 연결 성공 후 즉시 스케줄 동기화 실행
+                console.log("[QRScanner] Linking success, triggering schedule sync...");
+                await LockService.syncSchedules();
+
                 Alert.alert(
                     "등록 완료",
                     `[${registrationInfo.parentName}] 님의 기기와 연결되었습니다. 이제 보호자가 원격으로 잠금을 관리할 수 있습니다.`,

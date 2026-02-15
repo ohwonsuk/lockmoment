@@ -233,8 +233,11 @@ class LockControl: NSObject {
               
               let specificActivityName = DeviceActivityName.schedule("\(scheduleId)_\(weekday)")
               
+              let isOvernight = (startHour * 60 + startMinute) > (endHour * 60 + endMinute)
+              let endWeekday = isOvernight ? (weekday % 7) + 1 : weekday
+              
               let startComponents = DateComponents(hour: startHour, minute: startMinute, weekday: weekday)
-              let endComponents = DateComponents(hour: endHour, minute: endMinute, weekday: weekday)
+              let endComponents = DateComponents(hour: endHour, minute: endMinute, weekday: endWeekday)
               
               let schedule = DeviceActivitySchedule(
                   intervalStart: startComponents,

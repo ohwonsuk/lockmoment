@@ -49,24 +49,38 @@ export const LockService = {
             const notifSettings = await StorageService.getNotificationSettings();
 
             for (const schedule of newSchedules) {
-                if (schedule.isActive) {
-                    let normalizedType = (schedule.lockType || 'APP').toUpperCase();
-                    if (normalizedType === 'PHONE') normalizedType = 'FULL';
-                    if (normalizedType === 'APP_ONLY') normalizedType = 'APP';
+                const old = oldSchedules.find(s => s.id === schedule.id);
+                const hasChanged = !old ||
+                    old.isActive !== schedule.isActive ||
+                    old.startTime !== schedule.startTime ||
+                    old.endTime !== schedule.endTime ||
+                    JSON.stringify(old.days) !== JSON.stringify(schedule.days) ||
+                    old.lockType !== schedule.lockType ||
+                    JSON.stringify(old.lockedApps) !== JSON.stringify(schedule.lockedApps);
 
-                    await NativeLockControl.scheduleAlarm(
-                        schedule.id,
-                        schedule.startTime,
-                        schedule.endTime,
-                        schedule.days,
-                        normalizedType as any,
-                        schedule.name,
-                        JSON.stringify(schedule.lockedApps || []),
-                        prevent,
-                        notifSettings.preLockMinutes
-                    );
+                if (schedule.isActive) {
+                    if (hasChanged) {
+                        let normalizedType = (schedule.lockType || 'APP').toUpperCase();
+                        if (normalizedType === 'PHONE') normalizedType = 'FULL';
+                        if (normalizedType === 'APP_ONLY') normalizedType = 'APP';
+
+                        await NativeLockControl.scheduleAlarm(
+                            schedule.id,
+                            schedule.startTime,
+                            schedule.endTime,
+                            schedule.days,
+                            normalizedType as any,
+                            schedule.name,
+                            JSON.stringify(schedule.lockedApps || []),
+                            prevent,
+                            notifSettings.preLockMinutes
+                        );
+                        console.log(`[LockService] Scheduled alarm: ${schedule.name}`);
+                    }
                 } else {
-                    await NativeLockControl.cancelAlarm(schedule.id);
+                    if (hasChanged || old === undefined) {
+                        await NativeLockControl.cancelAlarm(schedule.id);
+                    }
                 }
             }
 

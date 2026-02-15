@@ -18,4 +18,17 @@ export class MetaDataService {
             return [];
         }
     }
+
+    /**
+     * 잠금 가능한 앱 목록 조회
+     */
+    static async getApps(): Promise<any[]> {
+        try {
+            const response = await apiService.get<{ success: boolean; apps: any[] }>('/meta/apps');
+            return response.apps || [];
+        } catch (error) {
+            console.error('[MetaDataService] getApps failed:', error);
+            return [];
+        }
+    }
 }

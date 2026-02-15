@@ -341,6 +341,29 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
 }
 ```
 
+### 9. 앱 목록 조회
+`GET /meta/apps`
+서비스에서 관리하는 잠금 가능한 전체 앱 목록을 조회합니다. `app_category_map` 테이블의 데이터 기반으로 제공됩니다.
+
+**Response**:
+```json
+{
+  "success": true,
+  "apps": [
+    {
+      "name": "유튜브",
+      "packageNames": ["com.google.ios.youtube", "com.google.android.youtube"],
+      "category": "ENTERTAINMENT"
+    },
+    {
+      "name": "카카오톡",
+      "packageNames": ["com.iwilab.kakao.talk", "com.kakao.talk"],
+      "category": "SOCIAL"
+    }
+  ]
+}
+```
+
 ---
 
 ---

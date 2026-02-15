@@ -91,48 +91,93 @@ class LockModel: ObservableObject {
             else { return current >= start || current < end } // Overnight support
         }
         
+        let yesterday = (weekday == 1) ? 7 : weekday - 1
+        
+        // Loop through policies for both today and yesterday
         let allKeys = defaults.dictionaryRepresentation().keys
-        for key in allKeys where key.hasPrefix("policy_") && key.hasSuffix("_\(weekday)") {
-            if let policy = defaults.dictionary(forKey: key),
-               let startH = policy["startHour"] as? Int,
-               let startM = policy["startMinute"] as? Int,
-               let endH = policy["endHour"] as? Int,
-               let endM = policy["endMinute"] as? Int {
-                
-                if isTimeInRange(current: totalMinutes, start: startH * 60 + startM, end: endH * 60 + endM) {
-                    if apply && !isLocked {
-                        let type = policy["lockType"] as? String ?? "FULL"
-                        let name = policy["name"] as? String ?? "예약 잠금"
-                        let prevent = policy["preventAppRemoval"] as? Bool ?? true
-                        startLock(duration: 0, lockType: type, name: name, preventRemoval: prevent)
+        var foundMatch = false
+        
+        for checkWeekday in [yesterday, weekday] {
+            let suffix = "_\(checkWeekday)"
+            for key in allKeys where key.hasPrefix("policy_") && key.hasSuffix(suffix) {
+                if let policy = defaults.dictionary(forKey: key),
+                   let startH = policy["startHour"] as? Int,
+                   let startM = policy["startMinute"] as? Int,
+                   let endH = policy["endHour"] as? Int,
+                   let endM = policy["endMinute"] as? Int {
+                    
+                    let startTotal = startH * 60 + startM
+                    let endTotal = endH * 60 + endM
+                    let isOvernight = startTotal > endTotal
+                    
+                    var inRange = false
+                    
+                    if checkWeekday == weekday {
+                        if isOvernight {
+                            inRange = totalMinutes >= startTotal
+                        } else {
+                            inRange = totalMinutes >= startTotal && totalMinutes < endTotal
+                        }
+                    } else if isOvernight {
+                        inRange = totalMinutes < endTotal
                     }
-                    return true
+                    
+                    if inRange {
+                        foundMatch = true
+                        if apply {
+                            applyLock(policy: policy)
+                        }
+                        return true 
+                    }
                 }
             }
         }
-        return false
+        return foundMatch
+    }
+
+    private func applyLock(policy: [String: Any]) {
+        // Prevent re-applying if already locked with the same policy
+        let name = policy["name"] as? String ?? "예약 잠금"
+        if isLocked && currentLockName == name {
+            return
+        }
+        
+        if !isLocked || currentLockName != name {
+            let type = policy["lockType"] as? String ?? "FULL"
+            let prevent = policy["preventAppRemoval"] as? Bool ?? true
+            startLock(duration: 0, lockType: type, name: name, preventRemoval: prevent)
+        }
     }
     
     func checkExpiration() -> Bool {
-        // Sync state from shared storage (updated by Extension)
+        // 1. Sync state from shared storage (updated by Extension)
         let savedLocked = sharedDefaults.bool(forKey: "isLocked")
         if self.isLocked != savedLocked {
             self.isLocked = savedLocked
+            // If it was unlocked externally, reset our local state
+            if !savedLocked {
+                self.endTime = nil
+                self.startTime = nil
+            }
         }
         
-        // 1. Manual/Timed Lock Expiration
+        // 2. Manual/Timed Lock Expiration
         if isLocked, let time = endTime, time < Date() {
             stopLock(status: "완료")
             return true
         }
         
-        // 2. Scheduled Lock Check (Start if needed)
-        let inSchedule = checkScheduledLocks(apply: !isLocked)
-        
-        // 3. Auto-unlock if scheduled lock ended (safety cleanup)
-        if isLocked && endTime == nil && !inSchedule {
-            if currentLockName.contains("예약") {
+        // 3. Scheduled Lock Check (Heartbeat)
+        // If it's a timed lock (endTime != nil), we don't interfere with schedules
+        if endTime == nil {
+            let inSchedule = checkScheduledLocks(apply: !isLocked)
+            
+            // Auto-unlock if scheduled lock ended
+            // We use a small buffer or check if it was actually a scheduled lock
+            if isLocked && !inSchedule {
+                // If the current lock was started by a schedule (endTime is nil), stop it
                 stopLock(status: "완료")
+                return true
             }
         }
         

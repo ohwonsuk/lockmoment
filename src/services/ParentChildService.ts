@@ -129,18 +129,26 @@ export const ParentChildService = {
         blockedCategories?: string[];
         isActive: boolean;
     }): Promise<ApiResponse> {
+        // PostgreSQL 'chk_schedule_time' (start < end) 제약 조건 우회 및 자정 처리
+        let normalizedEndTime = schedule.endTime;
+        if (schedule.endTime.startsWith('00:00')) {
+            normalizedEndTime = '23:59:59';
+        }
+
+        const normalizedLockType = (schedule.lockType as string).toUpperCase().includes('APP') ? 'APP_ONLY' : 'FULL';
         const payload = {
             name: schedule.name,
             start_time: schedule.startTime,
-            end_time: schedule.endTime,
+            end_time: normalizedEndTime,
             days: schedule.days,
-            lock_type: schedule.lockType === 'APP' ? 'APP_ONLY' : schedule.lockType,
+            lock_type: normalizedLockType,
             allowed_apps: schedule.allowedApps || [],
             blocked_apps: schedule.blockedApps || [],
             allowed_categories: schedule.allowedCategories || [],
             blocked_categories: schedule.blockedCategories || [],
             is_active: schedule.isActive
         };
+        console.log(`[ParentChildService] Creating schedule for child ${childId}:`, JSON.stringify(payload, null, 2));
         return apiService.post<ApiResponse>(`/parent-child/${childId}/schedules`, payload);
     },
 
@@ -162,14 +170,20 @@ export const ParentChildService = {
         const payload: any = {};
         if (schedule.name !== undefined) payload.name = schedule.name;
         if (schedule.startTime !== undefined) payload.start_time = schedule.startTime;
-        if (schedule.endTime !== undefined) payload.end_time = schedule.endTime;
+        if (schedule.endTime !== undefined) {
+            payload.end_time = schedule.endTime.startsWith('00:00') ? '23:59:59' : schedule.endTime;
+        }
         if (schedule.days !== undefined) payload.days = schedule.days;
-        if (schedule.lockType !== undefined) payload.lock_type = schedule.lockType === 'APP' ? 'APP_ONLY' : schedule.lockType;
+        if (schedule.lockType !== undefined) {
+            payload.lock_type = (schedule.lockType as string).toUpperCase().includes('APP') ? 'APP_ONLY' : 'FULL';
+        }
         if (schedule.allowedApps !== undefined) payload.allowed_apps = schedule.allowedApps;
         if (schedule.blockedApps !== undefined) payload.blocked_apps = schedule.blockedApps;
         if (schedule.allowedCategories !== undefined) payload.allowed_categories = schedule.allowedCategories;
         if (schedule.blockedCategories !== undefined) payload.blocked_categories = schedule.blockedCategories;
         if (schedule.isActive !== undefined) payload.is_active = schedule.isActive;
+
+        console.log(`[ParentChildService] Updating schedule ${scheduleId} for child ${childId}:`, JSON.stringify(payload, null, 2));
 
         return apiService.put<ApiResponse>(`/parent-child/${childId}/schedules/${scheduleId}`, payload);
     },

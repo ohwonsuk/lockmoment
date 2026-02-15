@@ -8,6 +8,7 @@ import { useAppNavigation, useAppRoute } from '../navigation/NavigationContext';
 import { ParentChildService } from '../services/ParentChildService';
 import { MetaDataService } from '../services/MetaDataService';
 import { NativeLockControl } from '../services/NativeLockControl';
+import { LockService } from '../services/LockService';
 
 const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
 const DAY_LABELS: Record<string, string> = { '월': '월', '화': '화', '수': '수', '목': '목', '금': '금', '토': '토', '일': '일' };
@@ -63,6 +64,7 @@ export const ScheduleEditScreen: React.FC = () => {
 
     useEffect(() => {
         loadCategories();
+        loadInstalledApps();
     }, []);
 
     const loadCategories = async () => {
@@ -78,9 +80,17 @@ export const ScheduleEditScreen: React.FC = () => {
         if (installedApps.length > 0) return;
         setLoadingApps(true);
         try {
-            const apps = await NativeLockControl.getInstalledApps();
-            apps.sort((a, b) => a.label.localeCompare(b.label));
-            setInstalledApps(apps);
+            // 원격 서버의 앱 메타데이터를 가져옴 (기존 NativeLockControl.getInstalledApps() 대체)
+            const apps = await MetaDataService.getApps();
+            const formattedApps = apps.map(app => ({
+                label: app.name,
+                packageNames: app.packageNames,
+                packageName: app.packageNames[0] || '', // Key로 사용 (하위 호환성)
+                category: app.category,
+                icon: null
+            }));
+            formattedApps.sort((a, b) => a.label.localeCompare(b.label));
+            setInstalledApps(formattedApps);
         } catch (e) {
             console.error(e);
             Alert.alert("오류", "앱 목록을 불러오는데 실패했습니다.");
@@ -137,6 +147,42 @@ export const ScheduleEditScreen: React.FC = () => {
         }
     };
 
+    const handleDelete = async () => {
+        Alert.alert(
+            "스케줄 삭제",
+            "이 스케줄을 삭제하시겠습니까?",
+            [
+                { text: "취소", style: "cancel" },
+                {
+                    text: "삭제",
+                    style: "destructive",
+                    onPress: async () => {
+                        setSaving(true);
+                        try {
+                            const result = await ParentChildService.deleteChildSchedule(childId, scheduleId);
+                            if (result.success) {
+                                // Sync with native side to cancel any active alarms
+                                try {
+                                    await LockService.syncSchedules();
+                                } catch (e) {
+                                    console.error('[ScheduleEditScreen] Sync failed after delete:', e);
+                                }
+                                goBack();
+                            } else {
+                                Alert.alert("오류", result.message || "삭제에 실패했습니다.");
+                            }
+                        } catch (e) {
+                            console.error(e);
+                            Alert.alert("오류", "네트워크 오류가 발생했습니다.");
+                        } finally {
+                            setSaving(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     const toggleDay = (day: string) => {
         if (selectedDays.includes(day)) {
             setSelectedDays(selectedDays.filter(d => d !== day));
@@ -153,17 +199,42 @@ export const ScheduleEditScreen: React.FC = () => {
         }
     };
 
-    const toggleApp = (pkg: string) => {
-        if (selectedApps.includes(pkg)) {
-            setSelectedApps(selectedApps.filter(p => p !== pkg));
+    const toggleApp = (pkgOrApp: any) => {
+        let pkgs: string[];
+        if (typeof pkgOrApp === 'string') {
+            // 메타데이터에서 해당 패키지를 포함하는 앱을 찾아 연관된 모든 패키지 추출
+            const app = installedApps.find(a => a.packageNames && a.packageNames.includes(pkgOrApp));
+            pkgs = app ? app.packageNames : [pkgOrApp];
         } else {
-            setSelectedApps([...selectedApps, pkg]);
+            pkgs = pkgOrApp.packageNames || [pkgOrApp.packageName];
+        }
+
+        const isSelected = pkgs.some((p: string) => selectedApps.includes(p));
+
+        if (isSelected) {
+            setSelectedApps(selectedApps.filter(p => !pkgs.includes(p)));
+        } else {
+            const newApps = [...selectedApps];
+            pkgs.forEach((p: string) => {
+                if (!newApps.includes(p)) newApps.push(p);
+            });
+            setSelectedApps(newApps);
         }
     };
 
-    // Filter apps for modal
+    // Filter apps for modal - 앱 명칭으로만 검색
     const filteredApps = installedApps.filter(app =>
         app.label.toLowerCase().includes(appSearch.toLowerCase())
+    );
+
+    const getAppLabel = (pkg: string) => {
+        const app = installedApps.find(a => a.packageNames && a.packageNames.includes(pkg));
+        return app ? app.label : pkg;
+    };
+
+    // UI 표출용 유니크 선택 목록 (플랫폼 통합)
+    const uniqueSelectedApps = installedApps.filter(app =>
+        app.packageNames && app.packageNames.some((p: string) => selectedApps.includes(p))
     );
 
     const handleAmPmChange = (val: string, isStart: boolean) => {
@@ -229,7 +300,11 @@ export const ScheduleEditScreen: React.FC = () => {
                         </View>
                         <Typography bold style={{ marginHorizontal: 10, marginTop: 40 }}>~</Typography>
                         <View style={styles.timeInputContainer}>
-                            <Typography variant="caption" color={Colors.textSecondary} style={{ marginBottom: 4 }}>종료 시간</Typography>
+                            <Typography variant="caption" color={Colors.textSecondary} style={{ marginBottom: 4 }}>
+                                종료 시간 {(startDate.getHours() * 60 + startDate.getMinutes()) > (endDate.getHours() * 60 + endDate.getMinutes()) &&
+                                    <Typography variant="caption" color={Colors.primary} bold> (+1일)</Typography>
+                                }
+                            </Typography>
                             <TouchableOpacity style={styles.timePickerButton} onPress={() => { setPickerTarget('end'); setIsTimePickerVisible(true); }}>
                                 <Typography variant="h2" bold>{endDate.getHours() >= 12 ? '오후' : '오전'} {(endDate.getHours() % 12 || 12)}:{endDate.getMinutes().toString().padStart(2, '0')}</Typography>
                             </TouchableOpacity>
@@ -300,18 +375,20 @@ export const ScheduleEditScreen: React.FC = () => {
                         </View>
 
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 12 }}>
-                            <Typography variant="h2" bold>선택된 앱 ({selectedApps.length})</Typography>
+                            <Typography variant="h2" bold>선택된 앱 ({uniqueSelectedApps.length})</Typography>
                             <TouchableOpacity onPress={() => { loadInstalledApps(); setShowAppModal(true); }}>
                                 <Typography color={Colors.primary} bold>앱 추가</Typography>
                             </TouchableOpacity>
                         </View>
 
-                        {selectedApps.length > 0 ? (
+                        {uniqueSelectedApps.length > 0 ? (
                             <View style={styles.selectedAppsList}>
-                                {selectedApps.map(pkg => (
-                                    <View key={pkg} style={styles.appChip}>
-                                        <Typography variant="caption" style={{ flex: 1 }} numberOfLines={1}>{pkg}</Typography>
-                                        <TouchableOpacity onPress={() => toggleApp(pkg)}>
+                                {uniqueSelectedApps.map(app => (
+                                    <View key={app.label} style={styles.appChip}>
+                                        <View style={{ flex: 1 }}>
+                                            <Typography bold numberOfLines={1}>{app.label}</Typography>
+                                        </View>
+                                        <TouchableOpacity onPress={() => toggleApp(app)}>
                                             <Icon name="close-circle" size={16} color={Colors.textSecondary} />
                                         </TouchableOpacity>
                                     </View>
@@ -330,6 +407,16 @@ export const ScheduleEditScreen: React.FC = () => {
                 >
                     {saving ? <ActivityIndicator color="white" /> : <Typography bold color="white">저장하기</Typography>}
                 </TouchableOpacity>
+
+                {mode === 'EDIT' && (
+                    <TouchableOpacity
+                        style={styles.deleteButton}
+                        onPress={handleDelete}
+                        disabled={saving}
+                    >
+                        <Typography bold color="#FF4B4B">스케줄 삭제</Typography>
+                    </TouchableOpacity>
+                )}
 
             </ScrollView>
 
@@ -437,22 +524,22 @@ export const ScheduleEditScreen: React.FC = () => {
                         <FlatList
                             data={filteredApps}
                             keyExtractor={item => item.packageName}
-                            renderItem={({ item }) => (
-                                <TouchableOpacity style={styles.modalAppItem} onPress={() => toggleApp(item.packageName)}>
-                                    {item.icon ? (
-                                        <Image source={{ uri: `data:image/png;base64,${item.icon}` }} style={styles.modalAppIcon} />
-                                    ) : (
-                                        <View style={[styles.modalAppIcon, { backgroundColor: Colors.border }]} />
-                                    )}
-                                    <View style={{ flex: 1 }}>
-                                        <Typography bold>{item.label}</Typography>
-                                        <Typography variant="caption" color={Colors.textSecondary}>{item.packageName}</Typography>
-                                    </View>
-                                    <View style={[styles.checkbox, selectedApps.includes(item.packageName) && styles.checkboxActive]}>
-                                        {selectedApps.includes(item.packageName) && <Icon name="checkmark" size={14} color="white" />}
-                                    </View>
-                                </TouchableOpacity>
-                            )}
+                            renderItem={({ item }) => {
+                                const isSelected = item.packageNames ? item.packageNames.some((p: string) => selectedApps.includes(p)) : selectedApps.includes(item.packageName);
+                                return (
+                                    <TouchableOpacity style={styles.modalAppItem} onPress={() => toggleApp(item)}>
+                                        <View style={[styles.modalAppIcon, { backgroundColor: Colors.border, justifyContent: 'center', alignItems: 'center' }]}>
+                                            <Icon name="apps" size={20} color={Colors.textSecondary} />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Typography bold>{item.label}</Typography>
+                                        </View>
+                                        <View style={[styles.checkbox, isSelected && styles.checkboxActive]}>
+                                            {isSelected && <Icon name="checkmark" size={14} color="white" />}
+                                        </View>
+                                    </TouchableOpacity>
+                                );
+                            }}
                         />
                     )}
                 </View>
@@ -581,7 +668,16 @@ const styles = StyleSheet.create({
         padding: 18,
         borderRadius: 16,
         alignItems: 'center',
+        marginBottom: 12,
+    },
+    deleteButton: {
+        backgroundColor: 'transparent',
+        padding: 18,
+        borderRadius: 16,
+        alignItems: 'center',
         marginBottom: 40,
+        borderWidth: 1,
+        borderColor: '#FF4B4B22',
     },
     modalContainer: {
         flex: 1,
