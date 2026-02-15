@@ -53,6 +53,14 @@ export const StorageService = {
         }
     },
 
+    async overwriteSchedules(schedules: Schedule[]): Promise<void> {
+        try {
+            await AsyncStorage.setItem(SCHEDULES_KEY, JSON.stringify(schedules));
+        } catch (e) {
+            console.error('Failed to overwrite schedules', e);
+        }
+    },
+
     async deleteSchedule(id: string): Promise<void> {
         try {
             const schedules = await this.getSchedules();

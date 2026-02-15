@@ -411,6 +411,113 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
 
 ---
 
+## 📅 예약된 잠금 (Scheduled Locks) API
+### 12. 스케줄 목록 조회
+`GET /parent-child/{childId}/schedules`
+자녀의 등록된 잠금 스케줄 목록을 조회합니다.
+
+**Response**:
+```json
+{
+  "success": true,
+  "schedules": [
+    {
+      "id": "uuid",
+      "name": "주말 게임 제한",
+      "start_time": "09:00:00",
+      "end_time": "12:00:00",
+      "days": ["SAT", "SUN"],
+      "lock_type": "APP_ONLY",
+      "allowed_apps": ["com.edu.app"],
+      "blocked_apps": ["com.game.app"],
+      "allowed_categories": ["EDUCATION"],
+      "blocked_categories": ["GAMES"],
+      "is_active": true
+    }
+  ]
+}
+```
+
+### 13. 스케줄 생성
+`POST /parent-child/{childId}/schedules`
+
+**Request**:
+```json
+{
+  "name": "취침 시간",
+  "start_time": "22:00",
+  "end_time": "07:00",
+  "days": ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"],
+  "lock_type": "FULL",
+  "is_active": true
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "스케줄이 생성되었습니다",
+  "schedule": { ... }
+}
+```
+
+### 14. 스케줄 수정
+`PUT /parent-child/{childId}/schedules/{scheduleId}`
+
+**Request**:
+```json
+{
+  "name": "취침 시간 (수정)",
+  "start_time": "23:00",
+  "end_time": "07:00",
+  "days": ["FRI", "SAT"],
+  "lock_type": "FULL",
+  "allowed_categories": [],
+  "blocked_categories": ["GAMES", "SOCIAL"],
+  "is_active": true
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "스케줄이 수정되었습니다"
+}
+```
+
+### 15. 스케줄 활성화/비활성화
+`PATCH /parent-child/{childId}/schedules/{scheduleId}/status`
+
+**Request**:
+```json
+{
+  "is_active": false
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "스케줄 상태가 변경되었습니다"
+}
+```
+
+### 16. 스케줄 삭제
+`DELETE /parent-child/{childId}/schedules/{scheduleId}`
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "스케줄이 삭제되었습니다"
+}
+```
+
+---
+
 ## 🔧 에러 응답 코드
 
 | 코드 | 설명 | 대응 방법 |

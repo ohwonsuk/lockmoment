@@ -27,6 +27,11 @@ class LockManager private constructor(private val context: Context) {
     private val prefs = context.getSharedPreferences("lock_state", Context.MODE_PRIVATE)
     private val historyPrefs = context.getSharedPreferences("lock_history", Context.MODE_PRIVATE)
     
+    init {
+        // Automatically restore state when LockManager is created (e.g. after service restart)
+        restoreLockState()
+    }
+    
     private val allowedPackages = mutableSetOf(
         "com.lockmoment",
         "com.android.systemui",

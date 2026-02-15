@@ -29,6 +29,7 @@ import { ChildDetailScreen } from '../screens/ChildDetailScreen';
 import { NotificationScreen } from '../screens/NotificationScreen';
 import { MyInfoScreen } from '../screens/MyInfoScreen';
 import { ScheduleListScreen } from '../screens/ScheduleListScreen';
+import { ScheduleEditScreen } from '../screens/ScheduleEditScreen';
 
 export const AppNavigator: React.FC = () => {
     const { currentScreen, currentParams } = useAppNavigation();
@@ -87,6 +88,8 @@ export const AppNavigator: React.FC = () => {
                 return <TabletKioskScreen />;
             case 'ChildDetail':
                 return <ChildDetailScreen />;
+            case 'ScheduleEdit':
+                return <ScheduleEditScreen />;
             default:
                 return <DashboardScreen />;
         }

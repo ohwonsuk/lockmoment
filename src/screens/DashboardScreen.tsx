@@ -126,27 +126,9 @@ export const DashboardScreen: React.FC = () => {
     };
 
     const loadSchedules = async () => {
-        // Load local + sync check
+        // Load local (which is synced by LockService for children)
         const storedSchedules = await StorageService.getSchedules();
-        const profile = await StorageService.getUserProfile();
-
-        if ((userRole === 'STUDENT' || userRole === 'CHILD') && profile?.id) {
-            const remote = await ParentChildService.getChildSchedules(profile.id);
-            const combined: Schedule[] = [...storedSchedules.map(s => ({ ...s, isReadOnly: s.isReadOnly ?? false, source: 'LOCAL' as const }))];
-
-            remote.forEach(s => {
-                if (!combined.find(ex => ex.id === s.id)) {
-                    combined.push({
-                        ...s,
-                        isReadOnly: s.createdBy !== profile.id,
-                        source: 'SERVER'
-                    } as any);
-                }
-            });
-            setSchedules(combined);
-        } else {
-            setSchedules(storedSchedules);
-        }
+        setSchedules(storedSchedules);
     };
 
     const checkPermission = async () => {

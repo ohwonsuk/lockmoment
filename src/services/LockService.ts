@@ -13,41 +13,46 @@ export const LockService = {
             const role = await StorageService.getUserRole();
             const profile = await StorageService.getUserProfile();
 
-            // 1. Load Local
-            const local = await StorageService.getSchedules();
+            // Only sync if child
+            if (role !== 'CHILD' && role !== 'STUDENT') return;
+            if (!profile?.id) return;
 
-            // 2. Load Remote (if linked)
-            let combined = [...local];
-            if (profile && profile.id) {
-                const remote = await ParentChildService.getChildSchedules(profile.id);
-                remote.forEach(rs => {
-                    const mapped: Schedule = {
-                        ...rs,
-                        isReadOnly: rs.createdBy !== profile.id,
-                        source: 'SERVER'
-                    } as any;
+            // 1. Get current local schedules (to know what to cancel)
+            const oldSchedules = await StorageService.getSchedules();
 
-                    const existingIdx = combined.findIndex(ex => ex.id === mapped.id);
-                    if (existingIdx > -1) {
-                        combined[existingIdx] = mapped;
-                    } else {
-                        combined.push(mapped);
-                    }
-                });
+            // 2. Load Remote (Source of Truth)
+            const remote = await ParentChildService.getChildSchedules(profile.id);
+            const newSchedules: Schedule[] = remote.map((r: any) => ({
+                id: r.id,
+                name: r.name,
+                startTime: r.startTime ? r.startTime.substring(0, 5) : '00:00',
+                endTime: r.endTime ? r.endTime.substring(0, 5) : '00:00',
+                days: r.days || [],
+                lockType: r.lockType || 'FULL',
+                lockedApps: r.blockedApps || [],
+                isActive: r.isActive,
+                source: 'SERVER',
+                isReadOnly: r.createdBy !== profile.id
+            }) as Schedule);
+
+            // 3. Cancel alarms for schedules removed from server
+            const newIds = new Set(newSchedules.map(s => s.id));
+            for (const old of oldSchedules) {
+                if (!newIds.has(old.id)) {
+                    await NativeLockControl.cancelAlarm(old.id);
+                    console.log(`[LockService] Cancelled removed schedule: ${old.name}`);
+                }
             }
 
-            // 3. Update Alarms/ManagedSettings
-            const preventRemoval = await StorageService.getPreventAppRemoval();
+            // 4. Update alarms for new/updated schedules
+            const prevent = await StorageService.getPreventAppRemoval();
             const notifSettings = await StorageService.getNotificationSettings();
 
-            // Clear all current alarms first (optional, or just update)
-            // For safety, we can cancel all and reschedule, or native side handles it.
-            // Native LockControl.scheduleAlarm usually overwrites by ID.
-
-            for (const schedule of combined) {
+            for (const schedule of newSchedules) {
                 if (schedule.isActive) {
                     let normalizedType = (schedule.lockType || 'APP').toUpperCase();
                     if (normalizedType === 'PHONE') normalizedType = 'FULL';
+                    if (normalizedType === 'APP_ONLY') normalizedType = 'APP';
 
                     await NativeLockControl.scheduleAlarm(
                         schedule.id,
@@ -57,20 +62,21 @@ export const LockService = {
                         normalizedType as any,
                         schedule.name,
                         JSON.stringify(schedule.lockedApps || []),
-                        preventRemoval,
+                        prevent,
                         notifSettings.preLockMinutes
                     );
-                    console.log(`[LockService] Scheduled: ${schedule.name} (${schedule.startTime}-${schedule.endTime})`);
                 } else {
                     await NativeLockControl.cancelAlarm(schedule.id);
                 }
             }
 
-            // 4. Force state restoration
-            // This tells the native side to re-evaluate if it should be locked RIGHT NOW
-            // based on the updated schedules and their time windows.
+            // 5. Persist to Local Storage
+            await StorageService.overwriteSchedules(newSchedules);
+
+            // 6. Restore Lock State
             await NativeLockControl.restoreLockState();
-            console.log("[LockService] Sync completed and state restoration requested.");
+            console.log("[LockService] Sync completed.");
+
         } catch (error) {
             console.error("[LockService] Sync failed:", error);
         }

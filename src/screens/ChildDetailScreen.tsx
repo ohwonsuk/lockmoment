@@ -16,6 +16,8 @@ export const ChildDetailScreen: React.FC = () => {
     const [child, setChild] = useState<ChildInfo | null>(null);
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'HOME' | 'INSTITUTE'>('HOME');
+    const [schedules, setSchedules] = useState<any[]>([]);
+    const [usageStats, setUsageStats] = useState({ totalUsage: 0, limit: 0 });
 
     useEffect(() => {
         if (childId) {
@@ -23,17 +25,26 @@ export const ChildDetailScreen: React.FC = () => {
         }
     }, [childId]);
 
+
+
     const loadChildDetails = async () => {
         setLoading(true);
         try {
-            // Fetch child details - potentially need a getChildById method in Service
-            const children = await ParentChildService.getLinkedChildren();
+            const [children, fetchedSchedules, stats] = await Promise.all([
+                ParentChildService.getLinkedChildren(),
+                ParentChildService.getChildSchedules(childId),
+                ParentChildService.getChildUsageStats(childId)
+            ]);
+
             const found = children.find(c => c.id === childId);
             if (found) setChild(found);
             else {
                 Alert.alert("Error", "Child not found");
                 goBack();
             }
+
+            setSchedules(fetchedSchedules);
+            setUsageStats(stats);
         } catch (error) {
             console.error(error);
         } finally {
@@ -41,13 +52,42 @@ export const ChildDetailScreen: React.FC = () => {
         }
     };
 
-    const handleLock = async () => {
-        // Trigger generic lock picker or unified lock flow for this child
-        Alert.alert("잠금 설정", `${child?.childName}님의 기기를 잠급니다.`, [
+    const handleLock = () => {
+        // Navigate to QR Generator for lock settings
+        navigate('QRGenerator', { childId: childId });
+    };
+
+    const handleToggleSchedule = async (scheduleId: string, currentStatus: boolean) => {
+        try {
+            // Optimistic update
+            setSchedules(prev => prev.map(s => s.id === scheduleId ? { ...s, isActive: !currentStatus } : s));
+
+            const result = await ParentChildService.toggleChildScheduleStatus(childId, scheduleId, !currentStatus);
+            if (!result.success) {
+                // Revert on failure
+                setSchedules(prev => prev.map(s => s.id === scheduleId ? { ...s, isActive: currentStatus } : s));
+                Alert.alert("오류", result.message || "스케줄 상태 변경에 실패했습니다.");
+            }
+        } catch (e) {
+            console.error(e);
+            Alert.alert("오류", "네트워크 오류가 발생했습니다.");
+        }
+    };
+
+    const handleDeleteSchedule = (scheduleId: string) => {
+        Alert.alert("스케줄 삭제", "정말로 이 스케줄을 삭제하시겠습니까?", [
             { text: "취소", style: "cancel" },
             {
-                text: "바로 잠금",
-                onPress: () => navigate('QuickLockPicker' as any, { targetId: childId }) // Needed implementation
+                text: "삭제",
+                style: "destructive",
+                onPress: async () => {
+                    const result = await ParentChildService.deleteChildSchedule(childId, scheduleId);
+                    if (result.success) {
+                        loadChildDetails();
+                    } else {
+                        Alert.alert("오류", result.message);
+                    }
+                }
             }
         ]);
     };
@@ -62,6 +102,12 @@ export const ChildDetailScreen: React.FC = () => {
             </View>
         );
     }
+
+    // Prepare usage stats for display
+    const usageHours = Math.floor(usageStats.totalUsage / 60);
+    const usageMins = usageStats.totalUsage % 60;
+    const limitHours = Math.floor(usageStats.limit / 60);
+    const progressPercent = usageStats.limit > 0 ? (usageStats.totalUsage / usageStats.limit) * 100 : 0;
 
     return (
         <View style={styles.container}>
@@ -152,18 +198,67 @@ export const ChildDetailScreen: React.FC = () => {
                         <View style={styles.infoCard}>
                             <View style={styles.infoRow}>
                                 <Typography color={Colors.textSecondary}>총 사용 시간</Typography>
-                                <Typography bold>2시간 15분 / 3시간</Typography>
+                                <Typography bold>{usageHours}시간 {usageMins}분 / {limitHours}시간</Typography>
                             </View>
                             <View style={styles.progressBarBg}>
-                                <View style={[styles.progressBarFill, { width: '75%' }]} />
+                                <View style={[styles.progressBarFill, { width: `${Math.min(progressPercent, 100)}%`, backgroundColor: progressPercent > 100 ? '#EF4444' : Colors.primary }]} />
                             </View>
+                            {progressPercent > 100 && (
+                                <Typography variant="caption" style={{ textAlign: 'right', color: '#EF4444' }}>
+                                    사용 제한 시간을 초과했습니다.
+                                </Typography>
+                            )}
                         </View>
 
-                        <Typography variant="h2" bold style={[styles.sectionTitle, { marginTop: 24 }]}>예약된 잠금</Typography>
-                        {/* Placeholder for schedule list specific to child */}
-                        <View style={styles.emptySchedule}>
-                            <Typography variant="caption" color={Colors.textSecondary}>예약된 잠금이 없습니다.</Typography>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 16 }}>
+                            <Typography variant="h2" bold>예약된 잠금</Typography>
+                            <TouchableOpacity onPress={() => navigate('ScheduleEdit', { childId: child.id, mode: 'CREATE' })}>
+                                <Icon name="add-circle" size={24} color={Colors.primary} />
+                            </TouchableOpacity>
                         </View>
+
+                        {schedules.length === 0 ? (
+                            <View style={styles.emptySchedule}>
+                                <Icon name="calendar-outline" size={40} color={Colors.textSecondary} />
+                                <Typography variant="caption" color={Colors.textSecondary} style={{ marginTop: 8 }}>
+                                    등록된 스케줄이 없습니다.{'\n'}
+                                    규칙적인 습관을 위해 스케줄을 추가해보세요.
+                                </Typography>
+                            </View>
+                        ) : (
+                            <View style={{ gap: 12 }}>
+                                {schedules.map(schedule => {
+                                    const startTime = schedule.startTime ? schedule.startTime.substring(0, 5) : "--:--";
+                                    const endTime = schedule.endTime ? schedule.endTime.substring(0, 5) : "--:--";
+                                    const daysDisplay = Array.isArray(schedule.days) ? schedule.days.map((d: string) => {
+                                        const map: Record<string, string> = { 'MON': '월', 'TUE': '화', 'WED': '수', 'THU': '목', 'FRI': '금', 'SAT': '토', 'SUN': '일' };
+                                        return map[d] || d;
+                                    }).join(' ') : "";
+
+                                    return (
+                                        <TouchableOpacity
+                                            key={schedule.id}
+                                            style={styles.scheduleItem}
+                                            onPress={() => navigate('ScheduleEdit', { childId: child.id, scheduleId: schedule.id, mode: 'EDIT', scheduleData: schedule })}
+                                        >
+                                            <View style={{ flex: 1 }}>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                                    <Typography bold>{schedule.name}</Typography>
+                                                    {schedule.lockType === 'FULL' && (
+                                                        <View style={styles.badge}><Typography style={styles.badgeText}>전체 잠금</Typography></View>
+                                                    )}
+                                                </View>
+                                                <Typography variant="h2" style={{ marginBottom: 4 }}>{startTime} ~ {endTime}</Typography>
+                                                <Typography variant="caption" color={Colors.textSecondary}>{daysDisplay}</Typography>
+                                            </View>
+                                            <TouchableOpacity onPress={(e) => { e.stopPropagation(); handleToggleSchedule(schedule.id, schedule.isActive); }}>
+                                                <Icon name={schedule.isActive ? "toggle" : "toggle-outline"} size={32} color={schedule.isActive ? Colors.primary : Colors.textSecondary} />
+                                            </TouchableOpacity>
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                            </View>
+                        )}
                     </View>
                 ) : (
                     <View style={styles.section}>
@@ -330,5 +425,25 @@ const styles = StyleSheet.create({
         padding: 40,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    scheduleItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: Colors.background,
+        padding: 16,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    badge: {
+        backgroundColor: Colors.primary + '20',
+        paddingHorizontal: 8,
+        paddingVertical: 2,
+        borderRadius: 6,
+    },
+    badgeText: {
+        fontSize: 10,
+        color: Colors.primary,
+        fontWeight: '700',
     },
 });

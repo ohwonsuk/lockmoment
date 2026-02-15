@@ -172,6 +172,74 @@ export const QRGeneratorScreen: React.FC = () => {
         );
     };
 
+    const saveSchedule = async (silent = false): Promise<boolean> => {
+        if (!lockTitle.trim()) {
+            if (!silent) Alert.alert("오류", "잠금 제목을 입력해주세요.");
+            return false;
+        }
+        if (selectedDays.length === 0) {
+            if (!silent) Alert.alert("오류", "반복 요일을 선택해주세요.");
+            return false;
+        }
+
+        try {
+            const sStr = `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`;
+            const eStr = `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`;
+
+            const isAppLock = selectedApps.length > 0 || selectedCategories.length > 0;
+
+            const schedule = {
+                name: lockTitle,
+                startTime: sStr,
+                endTime: eStr,
+                days: selectedDays,
+                lockType: (isAppLock || (selectedPresetId && presets.find(p => p.id === selectedPresetId)?.lock_type === 'APP_ONLY')) ? 'APP' : 'FULL',
+                allowedApps: undefined, // Explicitly undefined as per previous logic
+                blockedApps: selectedApps.length > 0 ? selectedApps : undefined,
+                allowedCategories: undefined,
+                blockedCategories: selectedCategories.length > 0 ? selectedCategories : undefined,
+                isActive: true
+            };
+
+            // @ts-ignore
+            const finalSchedule: any = schedule;
+
+            if (selectedChildId === 'all') {
+                let successCount = 0;
+                for (const child of children) {
+                    const result = await ParentChildService.createChildSchedule(child.id, finalSchedule);
+                    if (result.success) successCount++;
+                }
+                if (!silent) {
+                    Alert.alert(
+                        "저장 완료",
+                        `${successCount}명의 자녀에게 예약 잠금이 저장되었습니다.\n\n잠금 제목: ${lockTitle}\n시간: ${sStr} ~ ${eStr}\n요일: ${selectedDays.join(', ')}`
+                    );
+                }
+                return successCount > 0;
+            } else {
+                const result = await ParentChildService.createChildSchedule(selectedChildId, finalSchedule);
+                if (result.success) {
+                    if (!silent) {
+                        const childName = children.find(c => c.id === selectedChildId)?.childName || '선택한 자녀';
+                        Alert.alert(
+                            "저장 완료",
+                            `${childName}에게 예약 잠금이 저장되었습니다.\n\n잠금 제목: ${lockTitle}\n시간: ${sStr} ~ ${eStr}\n요일: ${selectedDays.join(', ')}`
+                        );
+                    }
+                    return true;
+                } else {
+                    if (!silent) Alert.alert("저장 실패", result.message || "예약 저장에 실패했습니다.");
+                    return false;
+                }
+            }
+        } catch (error) {
+            console.error("Save Schedule Error:", error);
+            if (!silent) Alert.alert("오류", "예약 저장 중 오류가 발생했습니다.");
+            return false;
+        }
+    };
+
     const generateQR = async (manual = true) => {
         if (manual && !selectedPresetId && selectedCategories.length === 0) {
             setIsCategoryPickerVisible(true);
@@ -195,6 +263,15 @@ export const QRGeneratorScreen: React.FC = () => {
             let purpose: any = selectedPreset?.purpose || (qrType === 'INSTANT' ? 'LOCK_ONLY' : 'LOCK_AND_ATTENDANCE');
 
             if (qrType === 'SCHEDULED') {
+                if (manual) {
+                    // Enforce server save before generating QR
+                    const saved = await saveSchedule(true);
+                    if (!saved) {
+                        // If save failed, stop QR generation
+                        return;
+                    }
+                }
+
                 const sStr = `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`;
                 const eStr = `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`;
                 timeWindow = `${sStr}-${eStr}`;
@@ -303,58 +380,7 @@ export const QRGeneratorScreen: React.FC = () => {
         } catch (error) { console.error("Share Error:", error); }
     };
 
-    const handleSaveSchedule = async () => {
-        if (!lockTitle.trim()) {
-            Alert.alert("오류", "잠금 제목을 입력해주세요.");
-            return;
-        }
-        if (selectedDays.length === 0) {
-            Alert.alert("오류", "반복 요일을 선택해주세요.");
-            return;
-        }
-
-        try {
-            const sStr = `${startTime.getHours().toString().padStart(2, '0')}:${startTime.getMinutes().toString().padStart(2, '0')}`;
-            const eStr = `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`;
-
-            const schedule = {
-                name: lockTitle,
-                startTime: sStr,
-                endTime: eStr,
-                days: selectedDays,
-                apps: selectedApps,
-                isActive: true
-            };
-
-            if (selectedChildId === 'all') {
-                // Save for all children
-                let successCount = 0;
-                for (const child of children) {
-                    const result = await ParentChildService.saveChildSchedule(child.id, schedule);
-                    if (result.success) successCount++;
-                }
-                Alert.alert(
-                    "저장 완료",
-                    `${successCount}명의 자녀에게 예약 잠금이 저장되었습니다.\n\n잠금 제목: ${lockTitle}\n시간: ${sStr} ~ ${eStr}\n요일: ${selectedDays.join(', ')}`
-                );
-            } else {
-                // Save for selected child
-                const result = await ParentChildService.saveChildSchedule(selectedChildId, schedule);
-                if (result.success) {
-                    const childName = children.find(c => c.id === selectedChildId)?.childName || '선택한 자녀';
-                    Alert.alert(
-                        "저장 완료",
-                        `${childName}에게 예약 잠금이 저장되었습니다.\n\n잠금 제목: ${lockTitle}\n시간: ${sStr} ~ ${eStr}\n요일: ${selectedDays.join(', ')}`
-                    );
-                } else {
-                    Alert.alert("저장 실패", result.message || "예약 저장에 실패했습니다.");
-                }
-            }
-        } catch (error) {
-            console.error("Save Schedule Error:", error);
-            Alert.alert("오류", "예약 저장 중 오류가 발생했습니다.");
-        }
-    };
+    const handleSaveSchedule = () => saveSchedule(false);
 
     const qrSubtitle = qrType === 'INSTANT'
         ? `${duration}분 집중 모드`
@@ -710,9 +736,9 @@ export const QRGeneratorScreen: React.FC = () => {
                                     </TouchableOpacity>
                                 </View>
                             </View>
-                            <Typography variant="caption" color={Colors.textSecondary} style={{ textAlign: 'center', marginTop: 12 }}>
+                            {/* <Typography variant="caption" color={Colors.textSecondary} style={{ textAlign: 'center', marginTop: 12 }}>
                                 * 원활한 동작을 위해 시간 설정 로직은 개발 중입니다.
-                            </Typography>
+                            </Typography> */}
                         </View>
                         <TouchableOpacity style={styles.modalConfirmButton} onPress={() => setIsTimePickerVisible(false)}>
                             <Typography bold color="#FFF">완료</Typography>

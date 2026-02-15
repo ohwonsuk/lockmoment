@@ -106,8 +106,8 @@ export const ParentChildService = {
      */
     async getChildSchedules(childId: string): Promise<any[]> {
         try {
-            const response = await apiService.get<ApiResponse<any[]>>(`/parent-child/${childId}/schedules`);
-            return response.success ? response.data : [];
+            const response = await apiService.get<{ success: boolean; schedules: any[] }>(`/parent-child/${childId}/schedules`);
+            return response.success ? response.schedules : [];
         } catch (error) {
             console.error('[ParentChildService] Failed to fetch child schedules:', error);
             return [];
@@ -115,22 +115,90 @@ export const ParentChildService = {
     },
 
     /**
-     * Save a scheduled lock for a child
+     * Create a new schedule for a child
      */
-    async saveChildSchedule(childId: string, schedule: {
+    async createChildSchedule(childId: string, schedule: {
         name: string;
         startTime: string;
         endTime: string;
         days: string[];
-        apps: string[];
+        lockType: 'FULL' | 'APP';
+        allowedApps?: string[];
+        blockedApps?: string[];
+        allowedCategories?: string[];
+        blockedCategories?: string[];
         isActive: boolean;
     }): Promise<ApiResponse> {
-        try {
-            const response = await apiService.post<ApiResponse>(`/parent-child/${childId}/schedules`, schedule);
-            return response;
-        } catch (error) {
-            console.error('[ParentChildService] Failed to save child schedule:', error);
-            return { success: false, message: 'Failed to save schedule', data: null };
-        }
+        const payload = {
+            name: schedule.name,
+            start_time: schedule.startTime,
+            end_time: schedule.endTime,
+            days: schedule.days,
+            lock_type: schedule.lockType === 'APP' ? 'APP_ONLY' : schedule.lockType,
+            allowed_apps: schedule.allowedApps || [],
+            blocked_apps: schedule.blockedApps || [],
+            allowed_categories: schedule.allowedCategories || [],
+            blocked_categories: schedule.blockedCategories || [],
+            is_active: schedule.isActive
+        };
+        return apiService.post<ApiResponse>(`/parent-child/${childId}/schedules`, payload);
+    },
+
+    /**
+     * Update an existing schedule
+     */
+    async updateChildSchedule(childId: string, scheduleId: string, schedule: {
+        name?: string;
+        startTime?: string;
+        endTime?: string;
+        days?: string[];
+        lockType?: 'FULL' | 'APP';
+        allowedApps?: string[];
+        blockedApps?: string[];
+        allowedCategories?: string[];
+        blockedCategories?: string[];
+        isActive?: boolean;
+    }): Promise<ApiResponse> {
+        const payload: any = {};
+        if (schedule.name !== undefined) payload.name = schedule.name;
+        if (schedule.startTime !== undefined) payload.start_time = schedule.startTime;
+        if (schedule.endTime !== undefined) payload.end_time = schedule.endTime;
+        if (schedule.days !== undefined) payload.days = schedule.days;
+        if (schedule.lockType !== undefined) payload.lock_type = schedule.lockType === 'APP' ? 'APP_ONLY' : schedule.lockType;
+        if (schedule.allowedApps !== undefined) payload.allowed_apps = schedule.allowedApps;
+        if (schedule.blockedApps !== undefined) payload.blocked_apps = schedule.blockedApps;
+        if (schedule.allowedCategories !== undefined) payload.allowed_categories = schedule.allowedCategories;
+        if (schedule.blockedCategories !== undefined) payload.blocked_categories = schedule.blockedCategories;
+        if (schedule.isActive !== undefined) payload.is_active = schedule.isActive;
+
+        return apiService.put<ApiResponse>(`/parent-child/${childId}/schedules/${scheduleId}`, payload);
+    },
+
+    /**
+     * Toggle schedule active status
+     */
+    async toggleChildScheduleStatus(childId: string, scheduleId: string, isActive: boolean): Promise<ApiResponse> {
+        return apiService.patch<ApiResponse>(`/parent-child/${childId}/schedules/${scheduleId}/status`, { is_active: isActive });
+    },
+
+    /**
+     * Delete a schedule
+     */
+    async deleteChildSchedule(childId: string, scheduleId: string): Promise<ApiResponse> {
+        return apiService.delete<ApiResponse>(`/parent-child/${childId}/schedules/${scheduleId}`);
+    },
+
+    /**
+     * Fetch daily usage stats (Mocked for now)
+     */
+    async getChildUsageStats(childId: string): Promise<{ totalUsage: number; limit: number }> {
+        // TODO: Implement real API call
+        // return apiService.get(...)
+
+        // Mock data
+        return {
+            totalUsage: 135, // 2h 15m
+            limit: 180      // 3h
+        };
     }
 };

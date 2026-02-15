@@ -1143,6 +1143,44 @@ export const handler = async (event) => {
                 [user.userId]
             );
 
+            // [FIX] 스케줄 기반 잠금 상태 확인 (KST 기준)
+            if (result.rows.length > 0) {
+                const childIds = result.rows.map(c => c.child_user_id);
+                const schedulesRes = await client.query(
+                    `SELECT child_user_id, name, start_time, end_time, days 
+                     FROM child_schedules 
+                     WHERE child_user_id = ANY($1) AND is_active = TRUE`,
+                    [childIds]
+                );
+
+                const now = new Date();
+                const kstOffset = 9 * 60 * 60 * 1000;
+                const kstDate = new Date(now.getTime() + kstOffset);
+                const currentDay = ['일', '월', '화', '수', '목', '금', '토'][kstDate.getDay()];
+                const currentMinutes = kstDate.getHours() * 60 + kstDate.getMinutes();
+
+                result.rows.forEach(child => {
+                    // 이미 active_locks에 의해 잠금 상태면 패스
+                    if (child.active_lock_id) return;
+
+                    const childSchedules = schedulesRes.rows.filter(s => s.child_user_id === child.child_user_id);
+                    for (const s of childSchedules) {
+                        if (s.days.includes(currentDay)) {
+                            const [startH, startM] = s.start_time.split(':').map(Number);
+                            const [endH, endM] = s.end_time.split(':').map(Number);
+                            const startTotal = startH * 60 + startM;
+                            const endTotal = endH * 60 + endM;
+
+                            if (currentMinutes >= startTotal && currentMinutes < endTotal) {
+                                child.active_lock_id = 'SCHEDULED';
+                                child.lock_name = s.name;
+                                break;
+                            }
+                        }
+                    }
+                });
+            }
+
             return response(200, {
                 success: true,
                 data: result.rows.map(row => {
@@ -1425,12 +1463,17 @@ export const handler = async (event) => {
                 return response(400, { success: false, message: '연결 정보가 부족합니다.' });
             }
         }
-        if (httpMethod === 'GET' && path.includes('/parent-child/') && path.includes('/schedules')) {
+        // ========================================
+        // 자녀 스케줄 관리 (Scheduled Locks)
+        // ========================================
+
+        // GET /parent-child/{childId}/schedules - 스케줄 목록 조회
+        if (httpMethod === 'GET' && path.match(/^\/parent-child\/[^/]+\/schedules$/)) {
             const user = await requireAuth(event);
             const pathParts = path.split('/');
             const childId = pathParts[pathParts.indexOf('parent-child') + 1];
 
-            // 권한 확인: 본인이거나 연결된 부모인 경우 허용
+            // 권한 확인
             if (user.userId !== childId) {
                 const authCheck = await client.query(
                     'SELECT 1 FROM parent_child_relations WHERE parent_user_id = $1 AND child_user_id = $2',
@@ -1442,44 +1485,34 @@ export const handler = async (event) => {
             }
 
             const result = await client.query(
-                `SELECT cs.*, 
-                        (SELECT json_agg(DISTINCT day) FROM child_schedule_days WHERE schedule_id = cs.id) as days_list
-                 FROM child_schedules cs 
-                 WHERE cs.child_user_id = $1 AND cs.status = 'ACTIVE' 
-                 ORDER BY cs.start_time`,
+                `SELECT * FROM child_schedules 
+                 WHERE child_user_id = $1 
+                 ORDER BY start_time`,
                 [childId]
             );
 
-            // 요일 매핑 및 CamelCase 변환
-            const revDayMap = { 'MON': '월', 'TUE': '화', 'WED': '수', 'THU': '목', 'FRI': '금', 'SAT': '토', 'SUN': '일' };
-            const mappedRows = result.rows.map(row => {
-                const startTime = row.start_time ? row.start_time.split(':').slice(0, 2).join(':') : "";
-                const endTime = row.end_time ? row.end_time.split(':').slice(0, 2).join(':') : "";
-                const days = Array.isArray(row.days_list) ? row.days_list.map(d => revDayMap[d] || d) : [];
-
-                return {
-                    id: row.id,
-                    name: row.name,
-                    startTime,
-                    endTime,
-                    days,
-                    isActive: row.status === 'ACTIVE',
-                    status: row.status,
-                    createdBy: row.created_by,
-                    description: row.description,
-                    createdAt: row.created_at,
-                    updatedAt: row.updated_at
-                };
-            });
-
             return response(200, {
                 success: true,
-                data: mappedRows
+                schedules: result.rows.map(row => ({
+                    id: row.id,
+                    name: row.name,
+                    startTime: row.start_time,
+                    endTime: row.end_time,
+                    days: row.days,
+                    lockType: row.lock_type,
+                    allowedApps: row.allowed_apps,
+                    blockedApps: row.blocked_apps,
+                    allowedCategories: row.allowed_categories,
+                    blockedCategories: row.blocked_categories,
+                    isActive: row.is_active,
+                    createdAt: row.created_at,
+                    updatedAt: row.updated_at
+                }))
             });
         }
 
         // POST /parent-child/{childId}/schedules - 스케줄 생성
-        if (httpMethod === 'POST' && path.includes('/parent-child/') && path.includes('/schedules') && !path.match(/\/schedules\/[^/]+$/)) {
+        if (httpMethod === 'POST' && path.match(/^\/parent-child\/[^/]+\/schedules$/)) {
             const user = await requireAuth(event);
             const pathParts = path.split('/');
             const childId = pathParts[pathParts.indexOf('parent-child') + 1];
@@ -1489,48 +1522,174 @@ export const handler = async (event) => {
                 'SELECT 1 FROM parent_child_relations WHERE parent_user_id = $1 AND child_user_id = $2',
                 [user.userId, childId]
             );
-
             if (authCheck.rows.length === 0) {
                 return response(403, { success: false, message: '권한이 없습니다' });
             }
 
-            const { name, isActive } = data;
-            const start_time = data.start_time || data.startTime;
-            const end_time = data.end_time || data.endTime;
-            const days_of_week = data.days_of_week || data.days || [];
-            const allowed_apps = data.allowed_apps || data.apps || [];
+            const {
+                name,
+                start_time, end_time,
+                days,
+                lock_type,
+                allowed_apps, blocked_apps,
+                allowed_categories, blocked_categories,
+                is_active
+            } = data;
 
-            const status = (data.isActive !== false) ? 'ACTIVE' : 'PAUSED';
+            if (!name || !start_time || !end_time || !days) {
+                return response(400, { success: false, message: '필수 정보가 누락되었습니다' });
+            }
 
-            const scheduleId = getUUID();
             const result = await client.query(
                 `INSERT INTO child_schedules (
-          id, child_user_id, name, start_time, end_time, status, created_by, created_at, updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
-        RETURNING *`,
-                [scheduleId, childId, name, start_time, end_time, status, user.userId]
+                    child_user_id, name, start_time, end_time, days,
+                    lock_type, allowed_apps, blocked_apps, allowed_categories, blocked_categories, is_active,
+                    created_by, created_at, updated_at
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+                RETURNING *`,
+                [
+                    childId, name, start_time, end_time, JSON.stringify(days),
+                    lock_type || 'FULL',
+                    allowed_apps ? JSON.stringify(allowed_apps) : null,
+                    blocked_apps ? JSON.stringify(blocked_apps) : null,
+                    allowed_categories ? JSON.stringify(allowed_categories) : null,
+                    blocked_categories ? JSON.stringify(blocked_categories) : null,
+                    is_active !== false, // Default true
+                    user.userId
+                ]
             );
-
-            // 요일 정보 저장 (child_schedule_days 테이블)
-            if (days_of_week && Array.isArray(days_of_week)) {
-                const dayMap = {
-                    '월': 'MON', '화': 'TUE', '수': 'WED', '목': 'THU', '금': 'FRI', '토': 'SAT', '일': 'SUN',
-                    'Monday': 'MON', 'Tuesday': 'TUE', 'Wednesday': 'WED', 'Thursday': 'THU', 'Friday': 'FRI', 'Saturday': 'SAT', 'Sunday': 'SUN',
-                    'MON': 'MON', 'TUE': 'TUE', 'WED': 'WED', 'THU': 'THU', 'FRI': 'FRI', 'SAT': 'SAT', 'SUN': 'SUN'
-                };
-
-                for (const day of days_of_week) {
-                    const dbDay = dayMap[day] || day;
-                    await client.query(
-                        `INSERT INTO child_schedule_days (schedule_id, day) VALUES ($1, $2)`,
-                        [scheduleId, dbDay]
-                    );
-                }
-            }
 
             return response(201, {
                 success: true,
+                message: '스케줄이 생성되었습니다',
                 schedule: result.rows[0]
+            });
+        }
+
+        // PUT /parent-child/{childId}/schedules/{scheduleId} - 스케줄 수정
+        if (httpMethod === 'PUT' && path.match(/^\/parent-child\/[^/]+\/schedules\/[^/]+$/)) {
+            const user = await requireAuth(event);
+            const pathParts = path.split('/');
+            const childId = pathParts[pathParts.indexOf('parent-child') + 1];
+            const scheduleId = pathParts[pathParts.indexOf('schedules') + 1];
+
+            const authCheck = await client.query(
+                'SELECT 1 FROM parent_child_relations WHERE parent_user_id = $1 AND child_user_id = $2',
+                [user.userId, childId]
+            );
+            if (authCheck.rows.length === 0) {
+                return response(403, { success: false, message: '권한이 없습니다' });
+            }
+
+            const {
+                name,
+                start_time, end_time,
+                days,
+                lock_type,
+                allowed_apps, blocked_apps,
+                allowed_categories, blocked_categories,
+                is_active
+            } = data;
+
+            const result = await client.query(
+                `UPDATE child_schedules SET
+                    name = COALESCE($1, name),
+                    start_time = COALESCE($2, start_time),
+                    end_time = COALESCE($3, end_time),
+                    days = COALESCE($4, days),
+                    lock_type = COALESCE($5, lock_type),
+                    allowed_apps = COALESCE($6, allowed_apps),
+                    blocked_apps = COALESCE($7, blocked_apps),
+                    allowed_categories = COALESCE($8, allowed_categories),
+                    blocked_categories = COALESCE($9, blocked_categories),
+                    is_active = COALESCE($10, is_active),
+                    updated_at = NOW()
+                 WHERE id = $11 AND child_user_id = $12
+                 RETURNING *`,
+                [
+                    name, start_time, end_time,
+                    days ? JSON.stringify(days) : null,
+                    lock_type,
+                    allowed_apps ? JSON.stringify(allowed_apps) : null,
+                    blocked_apps ? JSON.stringify(blocked_apps) : null,
+                    allowed_categories ? JSON.stringify(allowed_categories) : null,
+                    blocked_categories ? JSON.stringify(blocked_categories) : null,
+                    is_active,
+                    scheduleId, childId
+                ]
+            );
+
+            if (result.rows.length === 0) {
+                return response(404, { success: false, message: '스케줄을 찾을 수 없습니다' });
+            }
+
+            return response(200, {
+                success: true,
+                message: '스케줄이 수정되었습니다',
+                schedule: result.rows[0]
+            });
+        }
+
+        // PATCH /parent-child/{childId}/schedules/{scheduleId}/status - 스케줄 활성/비활성
+        if (httpMethod === 'PATCH' && path.match(/^\/parent-child\/[^/]+\/schedules\/[^/]+\/status$/)) {
+            const user = await requireAuth(event);
+            const pathParts = path.split('/');
+            const childId = pathParts[pathParts.indexOf('parent-child') + 1];
+            const scheduleId = pathParts[pathParts.indexOf('schedules') + 1];
+
+            const authCheck = await client.query(
+                'SELECT 1 FROM parent_child_relations WHERE parent_user_id = $1 AND child_user_id = $2',
+                [user.userId, childId]
+            );
+            if (authCheck.rows.length === 0) {
+                return response(403, { success: false, message: '권한이 없습니다' });
+            }
+
+            const { is_active } = data;
+
+            const result = await client.query(
+                `UPDATE child_schedules SET
+                    is_active = $1,
+                    updated_at = NOW()
+                 WHERE id = $2 AND child_user_id = $3
+                 RETURNING *`,
+                [is_active, scheduleId, childId]
+            );
+
+            if (result.rows.length === 0) {
+                return response(404, { success: false, message: '스케줄을 찾을 수 없습니다' });
+            }
+
+            return response(200, {
+                success: true,
+                message: '스케줄 상태가 변경되었습니다',
+                schedule: result.rows[0]
+            });
+        }
+
+        // DELETE /parent-child/{childId}/schedules/{scheduleId} - 스케줄 삭제
+        if (httpMethod === 'DELETE' && path.match(/^\/parent-child\/[^/]+\/schedules\/[^/]+$/)) {
+            const user = await requireAuth(event);
+            const pathParts = path.split('/');
+            const childId = pathParts[pathParts.indexOf('parent-child') + 1];
+            const scheduleId = pathParts[pathParts.indexOf('schedules') + 1];
+
+            const authCheck = await client.query(
+                'SELECT 1 FROM parent_child_relations WHERE parent_user_id = $1 AND child_user_id = $2',
+                [user.userId, childId]
+            );
+            if (authCheck.rows.length === 0) {
+                return response(403, { success: false, message: '권한이 없습니다' });
+            }
+
+            await client.query(
+                'DELETE FROM child_schedules WHERE id = $1 AND child_user_id = $2',
+                [scheduleId, childId]
+            );
+
+            return response(200, {
+                success: true,
+                message: '스케줄이 삭제되었습니다'
             });
         }
 

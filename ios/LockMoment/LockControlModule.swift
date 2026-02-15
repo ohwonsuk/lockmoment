@@ -4,6 +4,14 @@ import FamilyControls
 import SwiftUI
 import UIKit
 import React
+import DeviceActivity
+import ManagedSettings
+
+extension DeviceActivityName {
+    static func schedule(_ id: String) -> DeviceActivityName {
+        return DeviceActivityName("com.lockmoment.schedule.\(id)")
+    }
+}
 
 @objc(LockControl)
 class LockControl: NSObject {
@@ -175,113 +183,143 @@ class LockControl: NSObject {
     resolve([])
   }
 
-  @objc(scheduleAlarm:startTime:endTime:days:lockType:name:allowedPackage:preventAppRemoval:preLockMinutes:resolve:rejecter:)
-  func scheduleAlarm(_ scheduleId: String, startTime: String, endTime: String, days: [String], lockType: String, name: String, allowedPackage: String?, preventAppRemoval: Bool, preLockMinutes: Double, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
-    
-    let center = UNUserNotificationCenter.current()
-    
-    // First cancel any existing notifications for this schedule
-    let baseId = "prelock_\(scheduleId)"
-    let startBaseId = "start_\(scheduleId)"
-    center.removePendingNotificationRequests(withIdentifiers: days.flatMap { ["\(baseId)_\($0)", "\(startBaseId)_\($0)"] })
+    @objc(scheduleAlarm:startTime:endTime:days:lockType:name:allowedPackage:preventAppRemoval:preLockMinutes:resolve:rejecter:)
+    func scheduleAlarm(_ scheduleId: String, startTime: String, endTime: String, days: [String], lockType: String, name: String, allowedPackage: String?, preventAppRemoval: Bool, preLockMinutes: Double, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+      
+      if #available(iOS 15.0, *) {
+          let center = DeviceActivityCenter()
+          let notificationCenter = UNUserNotificationCenter.current()
+          
+          let activityName = DeviceActivityName.schedule(scheduleId)
+          
+          // 1. Clean up existing (including weekday variants)
+          let allPossibleActivities = [activityName] + (1...7).map { DeviceActivityName.schedule("\(scheduleId)_\($0)") }
+          center.stopMonitoring(allPossibleActivities)
+          
+          let baseId = "prelock_\(scheduleId)"
+          let startBaseId = "start_\(scheduleId)"
+          // Remove old notifications (best effort)
+          notificationCenter.getPendingNotificationRequests { requests in
+              let ids = requests.filter { $0.identifier.contains(scheduleId) }.map { $0.identifier }
+              notificationCenter.removePendingNotificationRequests(withIdentifiers: ids)
+          }
 
-    let timeParts = startTime.split(separator: ":")
-    guard timeParts.count == 2,
-          let hour = Int(timeParts[0]),
-          let minute = Int(timeParts[1]) else {
-      reject("INVALID_TIME", "Invalid start time format", nil)
-      return
+          let timeParts = startTime.split(separator: ":")
+          let endParts = endTime.split(separator: ":")
+          
+          guard timeParts.count == 2, endParts.count == 2,
+                let startHour = Int(timeParts[0]), let startMinute = Int(timeParts[1]),
+                let endHour = Int(endParts[0]), let endMinute = Int(endParts[1]) else {
+            reject("INVALID_TIME", "Invalid time format", nil)
+            return
+          }
+
+          let dayMap: [String: Int] = [
+              "일": 1, "월": 2, "화": 3, "수": 4, "목": 5, "금": 6, "토": 7
+          ]
+
+          // Prepare DeviceActivitySchedule
+          // DeviceActivitySchedule takes a single interval. If days differ, we might need multiple activities?
+          // Actually DeviceActivitySchedule has `intervalStart` and `intervalEnd` which are DateComponents.
+          // It repeats. But if we select specific days (Monday, Wednesday), we cannot express that in ONE DeviceActivitySchedule easily if simpler inputs.
+          // DeviceActivitySchedule documentation says it repeats.
+          // If we want Mon, Wed: we need separate schedules?
+          
+          // Strategy: Create one activity per day-schedule pair?
+          // E.g. "schedule_ID_Mon", "schedule_ID_Wed".
+          
+          for day in days {
+              guard let weekday = dayMap[day] else { continue }
+              
+              let specificActivityName = DeviceActivityName.schedule("\(scheduleId)_\(weekday)")
+              
+              let startComponents = DateComponents(hour: startHour, minute: startMinute, weekday: weekday)
+              let endComponents = DateComponents(hour: endHour, minute: endMinute, weekday: weekday)
+              
+              let schedule = DeviceActivitySchedule(
+                  intervalStart: startComponents,
+                  intervalEnd: endComponents,
+                  repeats: true,
+                  warningTime: DateComponents(minute: Int(preLockMinutes))
+              )
+              
+              do {
+                  try center.startMonitoring(specificActivityName, during: schedule)
+              } catch {
+                  print("Failed to start monitoring for \(day): \(error)")
+              }
+              
+              // Also schedule local notification as fallback/alert
+              let content = UNMutableNotificationContent()
+              content.title = "예약 잠금 시작"
+              content.body = "'\(name)' 예약 잠금 시간이 되었습니다."
+              content.sound = .default
+              
+              var notifComponents = DateComponents()
+              notifComponents.weekday = weekday
+              notifComponents.hour = startHour
+              notifComponents.minute = startMinute
+              notifComponents.second = 0
+              
+              let trigger = UNCalendarNotificationTrigger(dateMatching: notifComponents, repeats: true)
+              let request = UNNotificationRequest(identifier: "\(startBaseId)_\(day)", content: content, trigger: trigger)
+              notificationCenter.add(request)
+
+              // Save policy per weekday activity to shared defaults
+              let defaults = UserDefaults(suiteName: "group.com.lockmoment") ?? UserDefaults.standard
+              
+              let sel = lockType.uppercased() == "APP" ? LockModel.shared.appSelection : LockModel.shared.phoneSelection
+              // Use PropertyListEncoder for native Apple types like FamilyActivitySelection
+              let encodedSelection = try? PropertyListEncoder().encode(sel)
+
+              let policy: [String: Any] = [
+                  "lockType": lockType,
+                  "preventAppRemoval": preventAppRemoval,
+                  "name": name,
+                  "selection": encodedSelection as Any,
+                  "startHour": startHour,
+                  "startMinute": startMinute,
+                  "endHour": endHour,
+                  "endMinute": endMinute
+              ]
+              
+              defaults.set(policy, forKey: "policy_\(scheduleId)_\(weekday)")
+          }
+          
+          resolve(true)
+      } else {
+          reject("OS_VERSION_ERROR", "Requires iOS 15.0+", nil)
+      }
     }
-
-    let dayMap: [String: Int] = [
-        "일": 1, "월": 2, "화": 3, "수": 4, "목": 5, "금": 6, "토": 7
-    ]
-
-    for day in days {
-        guard let weekday = dayMap[day] else { continue }
-        
-        var dateComponents = DateComponents()
-        dateComponents.weekday = weekday
-        dateComponents.hour = hour
-        dateComponents.minute = minute
-        dateComponents.second = 0
-        
-        let calendar = Calendar.current
-        
-        // 1. Schedule Actual Start Notification
-        if let startDate = calendar.date(from: dateComponents) {
-            let startComponents = calendar.dateComponents([.weekday, .hour, .minute, .second], from: startDate)
-            let startContent = UNMutableNotificationContent()
-            startContent.title = "예약 잠금 시작"
-            startContent.body = "'\(name)' 예약 잠금 시간이 되었습니다. 앱을 열어 잠금을 활성화해주세요."
-            startContent.sound = .default
-            
-            let startTrigger = UNCalendarNotificationTrigger(dateMatching: startComponents, repeats: true)
-            let startRequest = UNNotificationRequest(identifier: "\(startBaseId)_\(day)", content: startContent, trigger: startTrigger)
-            center.add(startRequest)
-            
-            // 1-1. Auto-apply check: if now is within (startDate) and (endDate)
-            let endTimeParts = endTime.split(separator: ":")
-            if endTimeParts.count >= 2,
-               let endHour = Int(endTimeParts[0]),
-               let endMinute = Int(endTimeParts[1]) {
-                
-                let now = Date()
-                let currentWeekday = calendar.component(.weekday, from: now)
-                
-                if weekday == currentWeekday {
-                    let nowHour = calendar.component(.hour, from: now)
-                    let nowMinute = calendar.component(.minute, from: now)
-                    
-                    let nowTotal = nowHour * 60 + nowMinute
-                    let startTotal = hour * 60 + minute
-                    let endTotal = endHour * 60 + endMinute
-                    
-                    if nowTotal >= startTotal && nowTotal < endTotal {
-                        let remainingMs = Double((endTotal - nowTotal) * 60 * 1000)
-                        if remainingMs > 0 {
-                            DispatchQueue.main.async {
-                                LockModel.shared.startLock(duration: remainingMs, lockType: lockType, name: name, preventRemoval: preventAppRemoval)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        
-        // 2. Schedule Pre-Lock Notification if needed
-        if preLockMinutes > 0, let startDate = calendar.date(from: dateComponents),
-           let triggerDate = calendar.date(byAdding: .minute, value: -Int(preLockMinutes), to: startDate) {
-            
-            let triggerComponents = calendar.dateComponents([.weekday, .hour, .minute, .second], from: triggerDate)
-            let content = UNMutableNotificationContent()
-            content.title = "잠금 시작 예고"
-            content.body = "\(Int(preLockMinutes))분 뒤에 '\(name)'이 시작됩니다."
-            content.sound = .default
-            
-            let trigger = UNCalendarNotificationTrigger(dateMatching: triggerComponents, repeats: true)
-            let request = UNNotificationRequest(identifier: "\(baseId)_\(day)", content: content, trigger: trigger)
-            center.add(request)
-        }
-    }
-    
-    resolve(true)
-  }
 
   @objc(cancelAlarm:resolve:rejecter:)
   func cancelAlarm(_ scheduleId: String, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
-    let center = UNUserNotificationCenter.current()
-    let baseId = "prelock_\(scheduleId)"
-    
-    // We don't know exactly which days were scheduled, so we might need a better way or just remove by prefix if possible?
-    // Actually center doesn't support removal by prefix easily without fetching all pending.
-    // However, since we use "prelock_{scheduleId}_{day}", we can just fetch all and filter.
-    
-    center.getPendingNotificationRequests { requests in
-        let idsToRemove = requests.filter { $0.identifier.hasPrefix(baseId) }.map { $0.identifier }
-        center.removePendingNotificationRequests(withIdentifiers: idsToRemove)
-        resolve(true)
-    }
+      if #available(iOS 15.0, *) {
+          let center = DeviceActivityCenter()
+          let notificationCenter = UNUserNotificationCenter.current()
+          
+          // Clear all potential activities for this schedule
+          let days = [1,2,3,4,5,6,7]
+          let baseActivity = DeviceActivityName.schedule(scheduleId)
+          let activityNames = [baseActivity] + days.map { DeviceActivityName.schedule("\(scheduleId)_\($0)") }
+          center.stopMonitoring(activityNames)
+          
+          // Remove notifications
+          notificationCenter.getPendingNotificationRequests { requests in
+              let ids = requests.filter { $0.identifier.contains(scheduleId) }.map { $0.identifier }
+              notificationCenter.removePendingNotificationRequests(withIdentifiers: ids)
+          }
+          
+          // Remove policy for all weekdays
+          let defaults = UserDefaults(suiteName: "group.com.lockmoment") ?? UserDefaults.standard
+          for weekday in 1...7 {
+              defaults.removeObject(forKey: "policy_\(scheduleId)_\(weekday)")
+          }
+          
+          resolve(true)
+      } else {
+          resolve(true)
+      }
   }
 
   @objc(openDefaultDialer:rejecter:)
