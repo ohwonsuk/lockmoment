@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Switch, Platform, Modal, TextInput, KeyboardAvoidingView } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Switch, Platform, Modal, TextInput, KeyboardAvoidingView, Linking } from 'react-native';
 import DeviceInfo from 'react-native-device-info';
 import { Colors } from '../theme/Colors';
 import { Typography } from '../components/Typography';
@@ -102,6 +102,29 @@ export const MyInfoScreen: React.FC = () => {
         await NativeLockControl.setPreventAppRemoval(value);
     };
 
+    const handleContactUs = async () => {
+        const subject = encodeURIComponent('[LockMoment] 문의하기');
+        const body = encodeURIComponent(
+            `\n\n--- 기기 정보 ---\n모델: ${deviceInfo?.model}\nOS: ${deviceInfo?.osVersion}\n앱 버전: ${deviceInfo?.appVersion}\n플랫폼: ${deviceInfo?.platform}`
+        );
+        const mailUrl = `mailto:lockmomentapp@gmail.com?subject=${subject}&body=${body}`;
+
+        try {
+            const supported = await Linking.canOpenURL(mailUrl);
+            if (supported) {
+                await Linking.openURL(mailUrl);
+            } else {
+                showAlert({
+                    title: "문의하기 실패",
+                    message: "메일 앱을 열 수 없습니다. lockmomentapp@gmail.com으로 문의해주세요.",
+                    confirmText: "확인"
+                });
+            }
+        } catch (error) {
+            console.error("Failed to open mail client", error);
+        }
+    };
+
     const handlePinVerify = async () => {
         if (pinInput.length !== 6) return;
 
@@ -143,7 +166,7 @@ export const MyInfoScreen: React.FC = () => {
 
             <ScrollView contentContainerStyle={styles.content}>
                 {/* Profile Card */}
-                <View style={styles.profileCard}>
+                <TouchableOpacity style={styles.profileCard} activeOpacity={0.7}>
                     <View style={styles.avatar}>
                         <Icon name="person" size={40} color="white" />
                     </View>
@@ -160,35 +183,11 @@ export const MyInfoScreen: React.FC = () => {
                             </View>
                         )}
                     </View>
-                </View>
+                    <Icon name="chevron-forward" size={24} color={Colors.border} />
+                </TouchableOpacity>
 
                 {/* Settings Section */}
-                <Typography variant="caption" color={Colors.textSecondary} style={styles.sectionTitle}>설정</Typography>
                 <View style={styles.menuContainer}>
-                    <View style={styles.menuItem}>
-                        <View style={styles.menuIcon}>
-                            <Icon name="trash-outline" size={24} color={Colors.text} />
-                        </View>
-                        <Typography style={styles.menuLabel}>앱 삭제 방지</Typography>
-                        <Switch
-                            value={preventAppRemoval}
-                            onValueChange={handleToggleRemoval}
-                            trackColor={{ false: '#334155', true: Colors.primary }}
-                            thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
-                        />
-                    </View>
-
-                    <TouchableOpacity
-                        style={styles.menuItem}
-                        onPress={() => navigate('PinSettings')}
-                    >
-                        <View style={styles.menuIcon}>
-                            <Icon name="key-outline" size={24} color={Colors.text} />
-                        </View>
-                        <Typography style={styles.menuLabel}>비밀번호(PIN) 설정</Typography>
-                        <Icon name="chevron-forward" size={20} color={Colors.border} />
-                    </TouchableOpacity>
-
                     <TouchableOpacity style={styles.menuItem} onPress={() => navigate('PersonalPreset')}>
                         <View style={styles.menuIcon}>
                             <Icon name="options-outline" size={24} color={Colors.text} />
@@ -205,11 +204,57 @@ export const MyInfoScreen: React.FC = () => {
                         <Icon name="chevron-forward" size={20} color={Colors.border} />
                     </TouchableOpacity>
 
-                    <TouchableOpacity style={[styles.menuItem, { borderBottomWidth: 0 }]} onPress={() => navigate('Permissions')}>
+                    {Platform.OS === 'ios' && (
+                        <TouchableOpacity style={styles.menuItem} onPress={() => navigate('AppLockSettings')}>
+                            <View style={styles.menuIcon}>
+                                <Icon name="lock-closed-outline" size={24} color={Colors.text} />
+                            </View>
+                            <Typography style={styles.menuLabel}>앱 잠금 설정</Typography>
+                            <Icon name="chevron-forward" size={20} color={Colors.border} />
+                        </TouchableOpacity>
+                    )}
+
+                    <TouchableOpacity style={styles.menuItem} onPress={() => { /* 도움말 로직 */ }}>
                         <View style={styles.menuIcon}>
-                            <Icon name="shield-checkmark-outline" size={24} color={Colors.text} />
+                            <Icon name="help-circle-outline" size={24} color={Colors.text} />
                         </View>
-                        <Typography style={styles.menuLabel}>권한 관리</Typography>
+                        <Typography style={styles.menuLabel}>도움말 / FAQ</Typography>
+                        <Icon name="chevron-forward" size={20} color={Colors.border} />
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={[styles.menuItem, { borderBottomWidth: 0 }]} onPress={handleContactUs}>
+                        <View style={styles.menuIcon}>
+                            <Icon name="mail-outline" size={24} color={Colors.text} />
+                        </View>
+                        <Typography style={styles.menuLabel}>문의하기</Typography>
+                        <Icon name="chevron-forward" size={20} color={Colors.border} />
+                    </TouchableOpacity>
+                </View>
+
+                {/* Legacy Functional Settings (Maintain previously added features) */}
+                <Typography variant="caption" color={Colors.textSecondary} style={[styles.sectionTitle, { marginTop: 24 }]}>기타 설정</Typography>
+                <View style={styles.menuContainer}>
+                    <View style={styles.menuItem}>
+                        <View style={styles.menuIcon}>
+                            <Icon name="trash-outline" size={24} color={Colors.text} />
+                        </View>
+                        <Typography style={styles.menuLabel}>앱 삭제 방지</Typography>
+                        <Switch
+                            value={preventAppRemoval}
+                            onValueChange={handleToggleRemoval}
+                            trackColor={{ false: '#334155', true: Colors.primary }}
+                            thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
+                        />
+                    </View>
+
+                    <TouchableOpacity
+                        style={[styles.menuItem, { borderBottomWidth: 0 }]}
+                        onPress={() => navigate('PinSettings')}
+                    >
+                        <View style={styles.menuIcon}>
+                            <Icon name="key-outline" size={24} color={Colors.text} />
+                        </View>
+                        <Typography style={styles.menuLabel}>비밀번호(PIN) 설정</Typography>
                         <Icon name="chevron-forward" size={20} color={Colors.border} />
                     </TouchableOpacity>
                 </View>
@@ -217,8 +262,7 @@ export const MyInfoScreen: React.FC = () => {
                 {/* Account Section */}
                 {!isAnonymous && (
                     <>
-                        <Typography variant="caption" color={Colors.textSecondary} style={[styles.sectionTitle, { marginTop: 24 }]}>계정</Typography>
-                        <View style={styles.menuContainer}>
+                        <View style={[styles.menuContainer, { marginTop: 24 }]}>
                             <TouchableOpacity style={[styles.menuItem, { borderBottomWidth: 0 }]} onPress={handleLogout}>
                                 <View style={styles.menuIcon}>
                                     <Icon name="log-out-outline" size={24} color="#EF4444" />
