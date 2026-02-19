@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { Header } from '../components/Header';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Icon } from '../components/Icon';
 import { useAppNavigation } from '../navigation/NavigationContext';
 import { apiService } from '../services/ApiService';
+import { useAlert } from '../context/AlertContext';
 
 interface ClassItem {
     id: string;
@@ -16,6 +17,7 @@ interface ClassItem {
 
 export const TeacherClassScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
+    const { showAlert } = useAlert();
     const [classes, setClasses] = useState<ClassItem[]>([]);
     const [isCreating, setIsCreating] = useState(false);
     const [newClassName, setNewClassName] = useState('');
@@ -43,17 +45,17 @@ export const TeacherClassScreen: React.FC = () => {
 
     const handleCreateClass = async () => {
         if (!newClassName.trim()) {
-            Alert.alert("알림", "수업명을 입력해주세요.");
+            showAlert({ title: "알림", message: "수업명을 입력해주세요." });
             return;
         }
 
         try {
             // await apiService.post('/classes', { name: newClassName, schedule: newClassSchedule });
-            Alert.alert("성공", "수업이 생성되었습니다.");
+            showAlert({ title: "성공", message: "수업이 생성되었습니다." });
             setIsCreating(false);
             fetchClasses();
         } catch (error) {
-            Alert.alert("오류", "수업 생성 실패");
+            showAlert({ title: "오류", message: "수업 생성 실패" });
         }
     };
 

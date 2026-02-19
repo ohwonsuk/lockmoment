@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, ActivityIndicator, Alert, RefreshControl } from 'react-native';
+import { View, StyleSheet, ScrollView, ActivityIndicator, RefreshControl } from 'react-native';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Header } from '../components/Header';
@@ -7,9 +7,11 @@ import { StorageService, Schedule } from '../services/StorageService';
 import { ParentChildService } from '../services/ParentChildService';
 import { WeeklySchedule } from '../components/WeeklySchedule';
 import { useAppNavigation } from '../navigation/NavigationContext';
+import { useAlert } from '../context/AlertContext';
 
 export const ScheduleListScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
+    const { showAlert } = useAlert();
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -54,7 +56,7 @@ export const ScheduleListScreen: React.FC = () => {
             setSchedules(combined);
         } catch (error) {
             console.error("Failed to load schedules:", error);
-            Alert.alert("오류", "스케줄을 불러오는 데 실패했습니다.");
+            showAlert({ title: "오류", message: "스케줄을 불러오는 데 실패했습니다." });
         } finally {
             setIsLoading(false);
             setIsRefreshing(false);
@@ -79,8 +81,8 @@ export const ScheduleListScreen: React.FC = () => {
         const schedule = schedules.find(s => s.id === id);
         if (!schedule || schedule.isReadOnly) return;
 
-        (globalThis as any).editingScheduleId = id;
-        navigate('AddSchedule');
+        // AddSchedule is deprecated, redirect to QR generator for modification/referencing
+        navigate('QRGenerator', { type: 'SCHEDULED', title: schedule.name, apps: schedule.lockedApps });
     };
 
     return (

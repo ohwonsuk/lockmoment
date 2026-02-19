@@ -21,7 +21,7 @@ import { FamilyLockList } from '../components/FamilyLockList';
 import { LockService } from '../services/LockService';
 
 export const DashboardScreen: React.FC = () => {
-    const { navigate } = useAppNavigation();
+    const { navigate, currentScreen } = useAppNavigation();
     const { showAlert } = useAlert();
     const [isLocked, setIsLocked] = useState(false);
     const [remainingTime, setRemainingTime] = useState<number>(0);
@@ -39,6 +39,12 @@ export const DashboardScreen: React.FC = () => {
     useEffect(() => {
         loadUserRole();
     }, []);
+
+    useEffect(() => {
+        if (currentScreen === 'Dashboard') {
+            refreshAll();
+        }
+    }, [currentScreen]);
 
     useEffect(() => {
         refreshAll();
@@ -286,8 +292,15 @@ export const DashboardScreen: React.FC = () => {
     };
 
     const handleGenerateScheduleQR = (id: string) => {
-        (globalThis as any).editingScheduleId = id;
-        navigate('AddSchedule' as any, { showQR: true });
+        const s = schedules.find(x => x.id === id);
+        if (s) {
+            navigate('QRGenerator', {
+                type: 'SCHEDULED',
+                title: s.name,
+                apps: s.lockedApps,
+                isPersonal: true
+            });
+        }
     };
 
     const handleApplyPreset = async (preset: Preset) => {
@@ -395,15 +408,24 @@ export const DashboardScreen: React.FC = () => {
             {/* 3. Legacy Schedule List (Optional) */}
             <View style={styles.sectionHeader}>
                 <Typography variant="h2" bold>내 예약 스케줄</Typography>
-                <TouchableOpacity onPress={() => navigate('AddSchedule')}>
-                    <Typography color={Colors.primary} bold>추가</Typography>
-                </TouchableOpacity>
+                {(userRole === 'PARENT' || userRole === 'TEACHER') && (
+                    <TouchableOpacity onPress={() => navigate('QRGenerator', { type: 'SCHEDULED', isPersonal: true })}>
+                        <Typography color={Colors.primary} bold>추가</Typography>
+                    </TouchableOpacity>
+                )}
             </View>
             <WeeklySchedule
                 schedules={schedules}
                 onPressItem={(id) => {
-                    (globalThis as any).editingScheduleId = id;
-                    navigate('AddSchedule');
+                    const s = schedules.find(x => x.id === id);
+                    if (s) {
+                        navigate('QRGenerator', {
+                            type: 'SCHEDULED',
+                            title: s.name,
+                            apps: s.lockedApps,
+                            isPersonal: true
+                        });
+                    }
                 }}
                 onToggle={handleToggleSchedule}
                 onGenerateQR={handleGenerateScheduleQR}

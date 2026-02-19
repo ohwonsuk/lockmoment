@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, Image } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, Image } from 'react-native';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Icon } from '../components/Icon';
 import { useAppNavigation } from '../navigation/NavigationContext';
 import { AuthService } from '../services/AuthService';
 import { StorageService } from '../services/StorageService';
+import { useAlert } from '../context/AlertContext';
 
 export const JoinInfoScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
+    const { showAlert } = useAlert();
     const [userRole, setUserRole] = useState<'PARENT' | 'TEACHER'>('PARENT');
     const [email, setEmail] = useState('example@kakao.com'); // Mock pre-filled from Kakao
     const [name, setName] = useState('홍길동'); // Mock from Kakao
@@ -18,7 +20,7 @@ export const JoinInfoScreen: React.FC = () => {
     const handleJoinComplete = async () => {
         // Email is optional now, but simple valid check if entered
         if (email && !email.includes('@')) {
-            Alert.alert('알림', '유효한 이메일을 입력해주세요.');
+            showAlert({ title: "알림", message: "유효한 이메일을 입력해주세요." });
             return;
         }
         await StorageService.setUserRole(userRole);

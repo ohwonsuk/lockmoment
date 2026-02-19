@@ -26,9 +26,25 @@ const SCHEDULES_KEY = '@lockmoment_schedules';
 const HISTORY_KEY = '@lockmoment_history';
 
 export const StorageService = {
+    async getItem(key: string): Promise<string | null> {
+        try {
+            return await AsyncStorage.getItem(key);
+        } catch (e) {
+            return null;
+        }
+    },
+
+    async setItem(key: string, value: string): Promise<void> {
+        try {
+            await AsyncStorage.setItem(key, value);
+        } catch (e) {
+            console.error(`Failed to save item ${key}`, e);
+        }
+    },
+
     async getSchedules(): Promise<Schedule[]> {
         try {
-            const jsonValue = await AsyncStorage.getItem(SCHEDULES_KEY);
+            const jsonValue = await this.getItem(SCHEDULES_KEY);
             return jsonValue != null ? JSON.parse(jsonValue) : [];
         } catch (e) {
             console.error('Failed to fetch schedules', e);

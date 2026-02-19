@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, Platform } from 'react-native';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Header } from '../components/Header';
 import { NativeLockControl } from '../services/NativeLockControl';
+import { useAlert } from '../context/AlertContext';
 
 export const PermissionsScreen: React.FC = () => {
+    const { showAlert } = useAlert();
     const [hasPermission, setHasPermission] = useState(false);
 
     useEffect(() => {
@@ -23,7 +25,7 @@ export const PermissionsScreen: React.FC = () => {
             await NativeLockControl.requestAuthorization();
             await checkStatus();
         } catch (e: any) {
-            Alert.alert("Error", e.message);
+            showAlert({ title: "오류", message: e.message || "권한 요청 중 오류가 발생했습니다." });
         }
     };
 

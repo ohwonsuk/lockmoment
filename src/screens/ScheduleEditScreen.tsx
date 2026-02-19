@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, FlatList, ActivityIndicator, Image } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, FlatList, ActivityIndicator, Image } from 'react-native';
 import { Colors } from '../theme/Colors';
 import { Typography } from '../components/Typography';
 import { Header } from '../components/Header';
@@ -9,6 +9,7 @@ import { ParentChildService } from '../services/ParentChildService';
 import { MetaDataService } from '../services/MetaDataService';
 import { NativeLockControl } from '../services/NativeLockControl';
 import { LockService } from '../services/LockService';
+import { useAlert } from '../context/AlertContext';
 
 const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
 const DAY_LABELS: Record<string, string> = { '월': '월', '화': '화', '수': '수', '목': '목', '금': '금', '토': '토', '일': '일' };
@@ -17,6 +18,7 @@ const EN_TO_KO: Record<string, string> = { 'MON': '월', 'TUE': '화', 'WED': '�
 
 export const ScheduleEditScreen: React.FC = () => {
     const { navigate, goBack } = useAppNavigation();
+    const { showAlert } = useAlert();
     const route = useAppRoute();
     const { childId, scheduleId, mode, scheduleData } = route.params as any;
 
@@ -93,7 +95,7 @@ export const ScheduleEditScreen: React.FC = () => {
             setInstalledApps(formattedApps);
         } catch (e) {
             console.error(e);
-            Alert.alert("오류", "앱 목록을 불러오는데 실패했습니다.");
+            showAlert({ title: "오류", message: "앱 목록을 불러오는데 실패했습니다." });
         } finally {
             setLoadingApps(false);
         }
@@ -101,11 +103,11 @@ export const ScheduleEditScreen: React.FC = () => {
 
     const handleSave = async () => {
         if (!name.trim()) {
-            Alert.alert("알림", "스케줄 이름을 입력해주세요.");
+            showAlert({ title: "알림", message: "스케줄 이름을 입력해주세요." });
             return;
         }
         if (selectedDays.length === 0) {
-            Alert.alert("알림", "요일을 하나 이상 선택해주세요.");
+            showAlert({ title: "알림", message: "요일을 하나 이상 선택해주세요." });
             return;
         }
 
@@ -133,54 +135,50 @@ export const ScheduleEditScreen: React.FC = () => {
             }
 
             if (result.success) {
-                Alert.alert("성공", mode === 'CREATE' ? "스케줄이 생성되었습니다." : "스케줄이 수정되었습니다.", [
-                    { text: "확인", onPress: () => goBack() }
-                ]);
+                showAlert({
+                    title: "성공",
+                    message: mode === 'CREATE' ? "스케줄이 생성되었습니다." : "스케줄이 수정되었습니다.",
+                    onConfirm: () => goBack()
+                });
             } else {
-                Alert.alert("오류", result.message || "저장에 실패했습니다.");
+                showAlert({ title: "오류", message: result.message || "저장에 실패했습니다." });
             }
         } catch (e) {
             console.error(e);
-            Alert.alert("오류", "네트워크 오류가 발생했습니다.");
+            showAlert({ title: "오류", message: "네트워크 오류가 발생했습니다." });
         } finally {
             setSaving(false);
         }
     };
 
     const handleDelete = async () => {
-        Alert.alert(
-            "스케줄 삭제",
-            "이 스케줄을 삭제하시겠습니까?",
-            [
-                { text: "취소", style: "cancel" },
-                {
-                    text: "삭제",
-                    style: "destructive",
-                    onPress: async () => {
-                        setSaving(true);
+        showAlert({
+            title: "스케줄 삭제",
+            message: "이 스케줄을 삭제하시겠습니까?",
+            cancelText: "취소",
+            confirmText: "삭제",
+            onConfirm: async () => {
+                setSaving(true);
+                try {
+                    const result = await ParentChildService.deleteChildSchedule(childId, scheduleId);
+                    if (result.success) {
                         try {
-                            const result = await ParentChildService.deleteChildSchedule(childId, scheduleId);
-                            if (result.success) {
-                                // Sync with native side to cancel any active alarms
-                                try {
-                                    await LockService.syncSchedules();
-                                } catch (e) {
-                                    console.error('[ScheduleEditScreen] Sync failed after delete:', e);
-                                }
-                                goBack();
-                            } else {
-                                Alert.alert("오류", result.message || "삭제에 실패했습니다.");
-                            }
+                            await LockService.syncSchedules();
                         } catch (e) {
-                            console.error(e);
-                            Alert.alert("오류", "네트워크 오류가 발생했습니다.");
-                        } finally {
-                            setSaving(false);
+                            console.error('[ScheduleEditScreen] Sync failed after delete:', e);
                         }
+                        goBack();
+                    } else {
+                        showAlert({ title: "오류", message: result.message || "삭제에 실패했습니다." });
                     }
+                } catch (e) {
+                    console.error(e);
+                    showAlert({ title: "오류", message: "네트워크 오류가 발생했습니다." });
+                } finally {
+                    setSaving(false);
                 }
-            ]
-        );
+            }
+        });
     };
 
     const toggleDay = (day: string) => {

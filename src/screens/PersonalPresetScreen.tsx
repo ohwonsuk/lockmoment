@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, TextInput, ScrollView } from 'react-native';
+import { View, StyleSheet, FlatList, TouchableOpacity, Modal, TextInput, ScrollView } from 'react-native';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Header } from '../components/Header';
@@ -7,8 +7,11 @@ import { Icon } from '../components/Icon';
 import { PresetService, Preset } from '../services/PresetService';
 import { StorageService } from '../services/StorageService';
 import { MetaDataService, AppCategory } from '../services/MetaDataService';
+import { useAlert } from '../context/AlertContext';
+import { LockService } from '../services/LockService';
 
 export const PersonalPresetScreen: React.FC = () => {
+    const { showAlert } = useAlert();
     const [presets, setPresets] = useState<Preset[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -138,40 +141,37 @@ export const PersonalPresetScreen: React.FC = () => {
 
     const handleSave = async () => {
         if (!editingPreset?.name?.trim()) {
-            Alert.alert("오류", "프리셋 이름을 입력해주세요.");
+            showAlert({ title: "오류", message: "프리셋 이름을 입력해주세요." });
             return;
         }
 
         try {
             const saved = await PresetService.savePersonalPreset(editingPreset);
             setIsEditorVisible(false);
+            await LockService.syncSchedules();
             loadData();
-            Alert.alert("저장 완료", "사전등록이 저장되었습니다.");
+            showAlert({ title: "저장 완료", message: "사전등록이 저장되었습니다." });
         } catch (error) {
-            Alert.alert("오류", "저장에 실패했습니다.");
+            showAlert({ title: "오류", message: "저장에 실패했습니다." });
         }
     };
 
     const handleDelete = (id: string) => {
-        Alert.alert(
-            "사전등록 삭제",
-            "정말 이 사전등록을 삭제하시겠습니까?",
-            [
-                { text: "취소", style: "cancel" },
-                {
-                    text: "삭제",
-                    style: "destructive",
-                    onPress: async () => {
-                        try {
-                            await PresetService.deletePersonalPreset(id);
-                            loadData();
-                        } catch (error) {
-                            Alert.alert("오류", "삭제에 실패했습니다.");
-                        }
-                    }
+        showAlert({
+            title: "사전등록 삭제",
+            message: "정말 이 사전등록을 삭제하시겠습니까?",
+            cancelText: "취소",
+            confirmText: "삭제",
+            onConfirm: async () => {
+                try {
+                    await PresetService.deletePersonalPreset(id);
+                    await LockService.syncSchedules();
+                    loadData();
+                } catch (error) {
+                    showAlert({ title: "오류", message: "삭제에 실패했습니다." });
                 }
-            ]
-        );
+            }
+        });
     };
 
     const toggleCategory = (catId: string) => {

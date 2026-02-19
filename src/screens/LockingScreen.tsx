@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, Alert, Platform, Linking } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Platform, Linking } from 'react-native';
 import { Colors } from '../theme/Colors';
 import { Typography } from '../components/Typography';
 import { NativeLockControl } from '../services/NativeLockControl';
 import { useAppNavigation } from '../navigation/NavigationContext';
+import { useAlert } from '../context/AlertContext';
 
 export const LockingScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
+    const { showAlert } = useAlert();
     const [timeStr, setTimeStr] = useState<string>("00:00:00");
 
     useEffect(() => {
@@ -40,20 +42,16 @@ export const LockingScreen: React.FC = () => {
     }, [navigate]);
 
     const handleStop = async () => {
-        Alert.alert(
-            "잠금 해제",
-            "관리자 비밀번호가 필요합니다. 정말 중단하시겠습니까?",
-            [
-                { text: "취소", style: "cancel" },
-                {
-                    text: "중단",
-                    onPress: async () => {
-                        await NativeLockControl.stopLock();
-                        navigate('Dashboard');
-                    }
-                }
-            ]
-        );
+        showAlert({
+            title: "잠금 해제",
+            message: "관리자 비밀번호가 필요합니다. 정말 중단하시겠습니까?",
+            cancelText: "취소",
+            confirmText: "중단",
+            onConfirm: async () => {
+                await NativeLockControl.stopLock();
+                navigate('Dashboard');
+            }
+        });
     };
 
     const handleOpenDialer = async () => {
@@ -61,7 +59,7 @@ export const LockingScreen: React.FC = () => {
             await NativeLockControl.openDefaultDialer();
         } else {
             const url = 'telprompt:';
-            Linking.openURL(url).catch(() => Alert.alert("오류", "전화 앱을 열 수 없습니다."));
+            Linking.openURL(url).catch(() => showAlert({ title: "오류", message: "전화 앱을 열 수 없습니다." }));
         }
     };
 
@@ -69,7 +67,7 @@ export const LockingScreen: React.FC = () => {
         if (Platform.OS === 'android') {
             await NativeLockControl.openDefaultMessages();
         } else {
-            Linking.openURL('sms:').catch(() => Alert.alert("오류", "메시지 앱을 열 수 없습니다."));
+            Linking.openURL('sms:').catch(() => showAlert({ title: "오류", message: "메시지 앱을 열 수 없습니다." }));
         }
     };
 

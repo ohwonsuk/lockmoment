@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Alert, Linking, Modal, FlatList, ScrollView, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Linking, Modal, FlatList, ScrollView, ActivityIndicator } from 'react-native';
 import { Camera, useCameraDevice, useCodeScanner } from 'react-native-vision-camera';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
@@ -14,11 +14,13 @@ import { UniversalAppMapper } from '../services/UniversalAppMapper';
 import { LockService } from '../services/LockService';
 import { MetaDataService, AppCategory } from '../services/MetaDataService';
 import { Platform } from 'react-native';
+import { useAlert } from '../context/AlertContext';
 
 const isIOS = Platform.OS === 'ios';
 
 export const QRScannerScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
+    const { showAlert } = useAlert();
     const [hasPermission, setHasPermission] = useState(false);
     const device = useCameraDevice('back');
 
@@ -46,14 +48,14 @@ export const QRScannerScreen: React.FC = () => {
             setHasPermission(status === 'granted');
 
             if (status !== 'granted') {
-                Alert.alert(
-                    "카메라 권한 필요",
-                    "QR 스캔을 위해 카메라 권한이 필요합니다. 설정에서 권한을 허용해주세요.",
-                    [
-                        { text: "취소", onPress: () => navigate('Dashboard'), style: "cancel" },
-                        { text: "설정으로 이동", onPress: () => Linking.openSettings() }
-                    ]
-                );
+                showAlert({
+                    title: "카메라 권한 필요",
+                    message: "QR 스캔을 위해 카메라 권한이 필요합니다. 설정에서 권한을 허용해주세요.",
+                    cancelText: "취소",
+                    confirmText: "설정으로 이동",
+                    onCancel: () => navigate('Dashboard'),
+                    onConfirm: () => Linking.openSettings()
+                });
             }
         };
 
@@ -104,9 +106,11 @@ export const QRScannerScreen: React.FC = () => {
                     setScanResult(response.lockPolicy);
                     setIsConfirmModalVisible(true);
                 } else if (response.purpose === 'ATTENDANCE_ONLY') {
-                    Alert.alert("출석 완료", "출석이 성공적으로 확인되었습니다.", [
-                        { text: "확인", onPress: () => navigate('Dashboard') }
-                    ]);
+                    showAlert({
+                        title: "출석 완료",
+                        message: "출석이 성공적으로 확인되었습니다.",
+                        onConfirm: () => navigate('Dashboard')
+                    });
                 } else {
                     throw new Error("처리할 수 없는 QR 데이터입니다.");
                 }
@@ -116,17 +120,19 @@ export const QRScannerScreen: React.FC = () => {
 
         } catch (error: any) {
             console.error("QR Scan Error:", error);
-            Alert.alert("오류", error.message || "QR 처리 중 오류가 발생했습니다.", [
-                {
-                    text: "재시도", onPress: () => {
-                        isScanningRef.current = false;
-                        setIsProcessing(false);
-                        setRegistrationInfo(null);
-                        setScanResult(null);
-                    }
-                },
-                { text: "나가기", onPress: () => navigate('Dashboard'), style: "cancel" }
-            ]);
+            showAlert({
+                title: "오류",
+                message: error.message || "QR 처리 중 오류가 발생했습니다.",
+                cancelText: "나가기",
+                confirmText: "재시도",
+                onCancel: () => navigate('Dashboard'),
+                onConfirm: () => {
+                    isScanningRef.current = false;
+                    setIsProcessing(false);
+                    setRegistrationInfo(null);
+                    setScanResult(null);
+                }
+            });
         }
     };
 
@@ -158,17 +164,17 @@ export const QRScannerScreen: React.FC = () => {
                 console.log("[QRScanner] Linking success, triggering schedule sync...");
                 await LockService.syncSchedules();
 
-                Alert.alert(
-                    "등록 완료",
-                    `[${registrationInfo.parentName}] 님의 기기와 연결되었습니다. 이제 보호자가 원격으로 잠금을 관리할 수 있습니다.`,
-                    [{ text: "확인", onPress: () => navigate('Dashboard') }]
-                );
+                showAlert({
+                    title: "등록 완료",
+                    message: `[${registrationInfo.parentName}] 님의 기기와 연결되었습니다. 이제 보호자가 원격으로 잠금을 관리할 수 있습니다.`,
+                    onConfirm: () => navigate('Dashboard')
+                });
             } else {
-                Alert.alert("등록 실패", response.message || "부모 기기와 연결하는 중 오류가 발생했습니다.");
+                showAlert({ title: "등록 실패", message: response.message || "부모 기기와 연결하는 중 오류가 발생했습니다." });
             }
         } catch (error: any) {
             console.error("Registration Error:", error);
-            Alert.alert("등록 실패", error.message || "부모 기기와 연결하는 중 오류가 발생했습니다.");
+            showAlert({ title: "등록 실패", message: error.message || "부모 기기와 연결하는 중 오류가 발생했습니다." });
         } finally {
             setIsApplying(false);
             setRawQrData(null);
@@ -193,14 +199,14 @@ export const QRScannerScreen: React.FC = () => {
             if (!hasPermission) {
                 setIsConfirmModalVisible(false);
                 setIsApplying(false);
-                Alert.alert(
-                    "권한 필요",
-                    "잠금 기능을 사용하려면 먼저 권한을 허용해주세요.\n\n권한 설정 페이지로 이동하시겠습니까?",
-                    [
-                        { text: "취소", style: "cancel", onPress: () => navigate('Dashboard') },
-                        { text: "권한 설정", onPress: () => navigate('Permissions') }
-                    ]
-                );
+                showAlert({
+                    title: "권한 필요",
+                    message: "잠금 기능을 사용하려면 먼저 권한을 허용해주세요.\n\n권한 설정 페이지로 이동하시겠습니까?",
+                    cancelText: "취소",
+                    confirmText: "권한 설정",
+                    onCancel: () => navigate('Dashboard'),
+                    onConfirm: () => navigate('Permissions')
+                });
                 return;
             }
 
@@ -215,11 +221,11 @@ export const QRScannerScreen: React.FC = () => {
                 const count = await NativeLockControl.getSelectedAppCount();
                 if (count === 0) {
                     await new Promise<void>((resolve) => {
-                        Alert.alert(
-                            "잠금 앱 설정 필요",
-                            "iOS 보안 정책상 잠금 대상 앱을 직접 선택해 주셔야 합니다.\n다음 화면에서 차단할 앱들을 선택해 주세요.",
-                            [{ text: "확인", onPress: () => resolve() }]
-                        );
+                        showAlert({
+                            title: "잠금 앱 설정 필요",
+                            message: "iOS 보안 정책상 잠금 대상 앱을 직접 선택해 주셔야 합니다.\n다음 화면에서 차단할 앱들을 선택해 주세요.",
+                            onConfirm: () => resolve()
+                        });
                     });
                     const newCount = await NativeLockControl.presentFamilyActivityPicker('APP') as number;
                     if (newCount === 0) {
@@ -252,9 +258,11 @@ export const QRScannerScreen: React.FC = () => {
                 await LockService.syncSchedules();
 
                 setIsConfirmModalVisible(false);
-                Alert.alert("예약 등록 완료", `[${name}] 예약 잠금이 등록되었습니다.\n설정된 시간에 자동으로 잠금이 시작됩니다.`, [
-                    { text: "확인", onPress: () => navigate('Dashboard') }
-                ]);
+                showAlert({
+                    title: "예약 등록 완료",
+                    message: `[${name}] 예약 잠금이 등록되었습니다.\n설정된 시간에 자동으로 잠금이 시작됩니다.`,
+                    onConfirm: () => navigate('Dashboard')
+                });
             } else {
                 await NativeLockControl.startLock(
                     durationMs,
@@ -265,13 +273,15 @@ export const QRScannerScreen: React.FC = () => {
                 );
 
                 setIsConfirmModalVisible(false);
-                Alert.alert("잠금 활성화", `[${name}] 집중 모드가 시작되었습니다.`, [
-                    { text: "확인", onPress: () => navigate('Dashboard') }
-                ]);
+                showAlert({
+                    title: "잠금 활성화",
+                    message: `[${name}] 집중 모드가 시작되었습니다.`,
+                    onConfirm: () => navigate('Dashboard')
+                });
             }
         } catch (error: any) {
             console.error("Lock Start Error:", error);
-            Alert.alert("오류", "잠금을 시작하는 중 오류가 발생했습니다.");
+            showAlert({ title: "오류", message: "잠금을 시작하는 중 오류가 발생했습니다." });
         } finally {
             setIsApplying(false);
         }

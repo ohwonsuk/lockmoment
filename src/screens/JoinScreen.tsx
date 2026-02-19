@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, Linking, Alert, Modal } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, Linking, Modal } from 'react-native';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Icon } from '../components/Icon';

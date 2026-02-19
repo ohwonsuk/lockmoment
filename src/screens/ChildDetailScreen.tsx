@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { Colors } from '../theme/Colors';
 import { Typography } from '../components/Typography';
 import { Header } from '../components/Header';
@@ -7,9 +7,11 @@ import { Icon } from '../components/Icon';
 import { useAppNavigation, useAppRoute } from '../navigation/NavigationContext';
 import { ParentChildService, ChildInfo } from '../services/ParentChildService';
 import { NativeLockControl } from '../services/NativeLockControl';
+import { useAlert } from '../context/AlertContext';
 
 export const ChildDetailScreen: React.FC = () => {
     const { navigate, goBack } = useAppNavigation();
+    const { showAlert } = useAlert();
     const route = useAppRoute();
     const childId = (route.params as any)?.childId;
 
@@ -39,8 +41,7 @@ export const ChildDetailScreen: React.FC = () => {
             const found = children.find(c => c.id === childId);
             if (found) setChild(found);
             else {
-                Alert.alert("Error", "Child not found");
-                goBack();
+                showAlert({ title: "오류", message: "자녀 정보를 찾을 수 없습니다.", onConfirm: () => goBack() });
             }
 
             setSchedules(fetchedSchedules);
@@ -66,30 +67,29 @@ export const ChildDetailScreen: React.FC = () => {
             if (!result.success) {
                 // Revert on failure
                 setSchedules(prev => prev.map(s => s.id === scheduleId ? { ...s, isActive: currentStatus } : s));
-                Alert.alert("오류", result.message || "스케줄 상태 변경에 실패했습니다.");
+                showAlert({ title: "오류", message: result.message || "스케줄 상태 변경에 실패했습니다." });
             }
         } catch (e) {
             console.error(e);
-            Alert.alert("오류", "네트워크 오류가 발생했습니다.");
+            showAlert({ title: "오류", message: "네트워크 오류가 발생했습니다." });
         }
     };
 
     const handleDeleteSchedule = (scheduleId: string) => {
-        Alert.alert("스케줄 삭제", "정말로 이 스케줄을 삭제하시겠습니까?", [
-            { text: "취소", style: "cancel" },
-            {
-                text: "삭제",
-                style: "destructive",
-                onPress: async () => {
-                    const result = await ParentChildService.deleteChildSchedule(childId, scheduleId);
-                    if (result.success) {
-                        loadChildDetails();
-                    } else {
-                        Alert.alert("오류", result.message);
-                    }
+        showAlert({
+            title: "스케줄 삭제",
+            message: "정말로 이 스케줄을 삭제하시겠습니까?",
+            cancelText: "취소",
+            confirmText: "삭제",
+            onConfirm: async () => {
+                const result = await ParentChildService.deleteChildSchedule(childId, scheduleId);
+                if (result.success) {
+                    loadChildDetails();
+                } else {
+                    showAlert({ title: "오류", message: result.message || "삭제에 실패했습니다." });
                 }
             }
-        ]);
+        });
     };
 
     if (loading || !child) {
@@ -183,7 +183,7 @@ export const ChildDetailScreen: React.FC = () => {
                                 if (result.success) {
                                     setChild({ ...child, restrictMyInfo: newValue });
                                 } else {
-                                    Alert.alert("오류", result.message || "설정 변경에 실패했습니다.");
+                                    showAlert({ title: "오류", message: result.message || "설정 변경에 실패했습니다." });
                                 }
                             }}
                         >

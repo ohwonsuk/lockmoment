@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Platform, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import { Colors } from '../theme/Colors';
 import { Typography } from '../components/Typography';
 import { Header } from '../components/Header';
 import { Icon } from '../components/Icon';
 import { NativeLockControl } from '../services/NativeLockControl';
 import { useAppNavigation } from '../navigation/NavigationContext';
+import { useAlert } from '../context/AlertContext';
 
 export const AppLockSettingsScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
+    const { showAlert } = useAlert();
     const [hasSelection, setHasSelection] = useState(false);
     const [appCount, setAppCount] = useState(0);
     const [categoryCount, setCategoryCount] = useState(0);
@@ -62,36 +64,32 @@ export const AppLockSettingsScreen: React.FC = () => {
                 }
             } else {
                 // Android: Maybe show app list or just alert for now
-                Alert.alert("알림", "안드로이드는 현재 모든 앱을 잠금 범위로 설정할 수 있습니다.");
+                showAlert({ title: "알림", message: "안드로이드는 현재 모든 앱을 잠금 범위로 설정할 수 있습니다." });
             }
         } catch (error: any) {
             console.error('[AppLockSettings] Picker error:', error);
             if (error?.code === 'AUTH_REQUIRED') {
-                Alert.alert(
-                    "권한 필요",
-                    "스크린타임 권한이 필요합니다. 권한을 요청하시겠습니까?",
-                    [
-                        { text: "취소", style: "cancel" },
-                        {
-                            text: "권한 요청",
-                            onPress: async () => {
-                                try {
-                                    await NativeLockControl.requestAuthorization();
-                                    // After authorization, try again
-                                    handleSelectApps();
-                                } catch (authError) {
-                                    Alert.alert("오류", "권한 요청에 실패했습니다.");
-                                }
-                            }
+                showAlert({
+                    title: "권한 필요",
+                    message: "스크린타임 권한이 필요합니다. 권한을 요청하시겠습니까?",
+                    cancelText: "취소",
+                    confirmText: "권한 요청",
+                    onConfirm: async () => {
+                        try {
+                            await NativeLockControl.requestAuthorization();
+                            // After authorization, try again
+                            handleSelectApps();
+                        } catch (authError) {
+                            showAlert({ title: "오류", message: "권한 요청에 실패했습니다." });
                         }
-                    ]
-                );
+                    }
+                });
             } else if (error?.code === 'SIMULATOR_ERROR') {
-                Alert.alert("시뮬레이터 오류", "iOS 시뮬레이터에서는 스크린타임 API가 동작하지 않습니다. 실제 기기에서 테스트해주세요.");
+                showAlert({ title: "시뮬레이터 오류", message: "iOS 시뮬레이터에서는 스크린타임 API가 동작하지 않습니다. 실제 기기에서 테스트해주세요." });
             } else if (error?.code === 'AUTH_ERROR') {
-                Alert.alert("권한 오류", "스크린타임 권한이 필요합니다. 설정 > 스크린타임에서 앱 사용 제한을 허용해주세요.");
+                showAlert({ title: "권한 오류", message: "스크린타임 권한이 필요합니다. 설정 > 스크린타임에서 앱 사용 제한을 허용해주세요." });
             } else {
-                Alert.alert("오류", "설정 화면을 열 수 없습니다.");
+                showAlert({ title: "오류", message: "설정 화면을 열 수 없습니다." });
             }
         }
     };
@@ -103,13 +101,15 @@ export const AppLockSettingsScreen: React.FC = () => {
             // But we can add a confirmation here.
             setTimeout(() => {
                 setIsSaving(false);
-                Alert.alert("저장 완료", "잠금 대상 앱/카테고리가 저장되었습니다. 이제 잠금을 설정할 수 있습니다.", [
-                    { text: "확인", onPress: () => navigate('MyInfo') }
-                ]);
+                showAlert({
+                    title: "저장 완료",
+                    message: "잠금 대상 앱/카테고리가 저장되었습니다. 이제 잠금을 설정할 수 있습니다.",
+                    onConfirm: () => navigate('MyInfo')
+                });
             }, 500);
         } catch (error) {
             setIsSaving(false);
-            Alert.alert("오류", "저장에 실패했습니다.");
+            showAlert({ title: "오류", message: "저장에 실패했습니다." });
         }
     };
 

@@ -5,12 +5,12 @@ import { SettingsScreen } from '../screens/SettingsScreen';
 import { PermissionsScreen } from '../screens/PermissionsScreen';
 import { HistoryScreen } from '../screens/HistoryScreen';
 import { LockingScreen } from '../screens/LockingScreen';
-import { AddScheduleScreen } from '../screens/AddScheduleScreen';
+// import { AddScheduleScreen } from '../screens/AddScheduleScreen'; // Deprecated
 import { AppSelectScreen } from '../screens/AppSelectScreen';
 import { NotificationSettingsScreen } from '../screens/NotificationSettingsScreen';
 import { LoginScreen } from '../screens/LoginScreen';
 import { QRScannerScreen } from '../screens/QRScannerScreen';
-import { QRGeneratorScreen } from '../screens/QRGeneratorScreen';
+// import { QRGeneratorScreen } from '../screens/QRGeneratorScreen'; // Deprecated in favor of role-based screens
 import { TeacherClassScreen } from '../screens/TeacherClassScreen';
 import { JoinScreen } from '../screens/JoinScreen';
 import { JoinInfoScreen } from '../screens/JoinInfoScreen';
@@ -35,8 +35,39 @@ import { PersonalPresetScreen } from '../screens/PersonalPresetScreen';
 import { AppLockSettingsScreen } from '../screens/AppLockSettingsScreen';
 import { PinSettingsScreen } from '../screens/PinSettingsScreen';
 
+import { PersonalQRGeneratorScreen } from '../screens/PersonalQRGeneratorScreen';
+import { ParentQRGeneratorScreen } from '../screens/ParentQRGeneratorScreen';
+import { TeacherQRGeneratorScreen } from '../screens/TeacherQRGeneratorScreen';
+import { StorageService } from '../services/StorageService';
+
 export const AppNavigator: React.FC = () => {
     const { currentScreen, currentParams } = useAppNavigation();
+    const [userRole, setUserRole] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+        const loadRole = async () => {
+            const role = await StorageService.getUserRole();
+            setUserRole(role);
+        };
+        loadRole();
+    }, [currentScreen]); // Reload role when screen changes to ensure correct routing
+
+    const renderQRGenerator = () => {
+        // If explicitly requested isPersonal, use Personal screen
+        if (currentParams?.isPersonal) {
+            return <PersonalQRGeneratorScreen />;
+        }
+
+        // Otherwise, route by role
+        switch (userRole) {
+            case 'PARENT':
+                return <ParentQRGeneratorScreen />;
+            case 'TEACHER':
+                return <TeacherQRGeneratorScreen />;
+            default:
+                return <PersonalQRGeneratorScreen />;
+        }
+    };
 
     const renderScreen = () => {
         switch (currentScreen) {
@@ -52,8 +83,8 @@ export const AppNavigator: React.FC = () => {
                 return <HistoryScreen />;
             case 'Locking':
                 return <LockingScreen />;
-            case 'AddSchedule':
-                return <AddScheduleScreen />;
+            // case 'AddSchedule':
+            //     return <AddScheduleScreen />;
             case 'AppSelect':
                 return <AppSelectScreen />;
             case 'NotificationSettings':
@@ -63,7 +94,7 @@ export const AppNavigator: React.FC = () => {
             case 'QRScanner':
                 return <QRScannerScreen />;
             case 'QRGenerator':
-                return <QRGeneratorScreen />;
+                return renderQRGenerator();
             case 'TeacherClass':
                 return <TeacherClassScreen />;
             case 'Join':
@@ -81,7 +112,7 @@ export const AppNavigator: React.FC = () => {
             case 'Children':
                 return <ChildrenScreen />;
             case 'QR':
-                return <QRGeneratorScreen />; // Reuse for now, will refactor
+                return renderQRGenerator();
             case 'Notification':
                 return <NotificationScreen />;
             case 'MyInfo':

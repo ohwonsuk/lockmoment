@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, Modal, Platform, Linking } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, TextInput, Modal, Platform, Linking } from 'react-native';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Icon } from '../components/Icon';
 import { useAppNavigation } from '../navigation/NavigationContext';
 import { AuthService } from '../services/AuthService';
+import { useAlert } from '../context/AlertContext';
 
 const ConsentModal: React.FC<{
     visible: boolean;
@@ -36,6 +37,7 @@ const ConsentModal: React.FC<{
 
 export const AppleJoinScreen: React.FC = () => {
     const { navigate, currentParams } = useAppNavigation();
+    const { showAlert } = useAlert();
     const { appleSub, email: initialEmail, name: initialName } = currentParams;
 
     const [name, setName] = useState(initialName || '');
@@ -67,7 +69,7 @@ export const AppleJoinScreen: React.FC = () => {
         if (user) {
             navigate('JoinComplete' as any, { role: userRole });
         } else {
-            Alert.alert('오류', '회원가입 중 오류가 발생했습니다.');
+            showAlert({ title: "오류", message: "회원가입 중 오류가 발생했습니다." });
         }
     };
 

@@ -39,13 +39,13 @@ export const AppSelectScreen: React.FC = () => {
 
     const handleSelect = (app: { label: string, packageName: string }) => {
         (globalThis as any).selectedApp = app;
-        navigate('AddSchedule');
+        navigate('ScheduleList');
     };
 
     return (
         <View style={[styles.container, { paddingTop: insets.top }]}>
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigate('AddSchedule')} style={styles.headerButton}>
+                <TouchableOpacity onPress={() => navigate('ScheduleList')} style={styles.headerButton}>
                     <Icon name="chevron-back" size={28} />
                 </TouchableOpacity>
                 <Typography variant="h2" bold>잠금 앱 선택</Typography>

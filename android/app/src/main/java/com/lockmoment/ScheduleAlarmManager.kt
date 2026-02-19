@@ -212,16 +212,20 @@ object ScheduleAlarmManager {
         val hours = parts[0].toInt()
         val minutes = parts[1].toInt()
         
-        // Map Korean day names to Calendar constants
-        val dayOfWeek = when (day) {
-            "월" -> Calendar.MONDAY
-            "화" -> Calendar.TUESDAY
-            "수" -> Calendar.WEDNESDAY
-            "목" -> Calendar.THURSDAY
-            "금" -> Calendar.FRIDAY
-            "토" -> Calendar.SATURDAY
-            "일" -> Calendar.SUNDAY
-            else -> Calendar.MONDAY
+        // Map Korean day names or English abbreviations to Calendar constants
+        val dayOfWeek = when (day.uppercase()) {
+            "월", "MON" -> Calendar.MONDAY
+            "화", "TUE" -> Calendar.TUESDAY
+            "수", "WED" -> Calendar.WEDNESDAY
+            "목", "THU" -> Calendar.THURSDAY
+            "금", "FRI" -> Calendar.FRIDAY
+            "토", "SAT" -> Calendar.SATURDAY
+            "일", "SUN" -> Calendar.SUNDAY
+            else -> {
+                Log.e("ScheduleAlarmManager", "Invalid day string: $day")
+                // Return current day of week as fallback? Probably safer to use Monday but warn.
+                Calendar.MONDAY
+            }
         }
         
         calendar.set(Calendar.HOUR_OF_DAY, hours)

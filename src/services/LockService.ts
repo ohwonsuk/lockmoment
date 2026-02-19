@@ -3,6 +3,7 @@ import { ParentChildService } from './ParentChildService';
 import { NativeLockControl } from './NativeLockControl';
 import { apiService } from './ApiService';
 import DeviceInfo from 'react-native-device-info';
+import { PresetService, Preset } from './PresetService';
 
 export const LockService = {
     /**
@@ -13,38 +14,63 @@ export const LockService = {
             const role = await StorageService.getUserRole();
             const profile = await StorageService.getUserProfile();
 
-            // Only sync if child
-            if (role !== 'CHILD' && role !== 'STUDENT') return;
-            if (!profile?.id) return;
-
-            // 1. Get current local schedules (to know what to cancel)
+            // 1. Get current local schedules (cached in storage)
             const oldSchedules = await StorageService.getSchedules();
 
-            // 2. Load Remote (Source of Truth)
-            const remote = await ParentChildService.getChildSchedules(profile.id);
-            const newSchedules: Schedule[] = remote.map((r: any) => ({
-                id: r.id,
-                name: r.name,
-                startTime: r.startTime ? r.startTime.substring(0, 5) : '00:00',
-                endTime: r.endTime ? r.endTime.substring(0, 5) : '00:00',
-                days: r.days || [],
-                lockType: r.lockType || 'FULL',
-                lockedApps: r.blockedApps || [],
-                isActive: r.isActive,
-                source: 'SERVER',
-                isReadOnly: r.createdBy !== profile.id
-            }) as Schedule);
+            // 2. Load Local Personal Presets (For all users)
+            const personalPresets = await PresetService.getPersonalPresets();
+            const personalSchedules: Schedule[] = personalPresets
+                .filter(p => p.preset_type === 'SCHEDULED')
+                .map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    startTime: p.start_time ? p.start_time.substring(0, 5) : '00:00',
+                    endTime: p.end_time ? p.end_time.substring(0, 5) : '00:00',
+                    days: p.days || [],
+                    lockType: p.lock_type || 'FULL',
+                    lockedApps: p.allowed_apps || [], // Individual app blocking for personal presets
+                    isActive: p.isActive !== false, // Default to true if not specified
+                    source: 'LOCAL',
+                    isReadOnly: false
+                } as Schedule));
 
-            // 3. Cancel alarms for schedules removed from server
+            // 3. Load Remote Schedules (Only if child)
+            let remoteSchedules: Schedule[] = [];
+            if ((role === 'CHILD' || role === 'STUDENT') && profile?.id) {
+                const remote = await ParentChildService.getChildSchedules(profile.id);
+                remoteSchedules = remote.map((r: any) => ({
+                    id: r.id,
+                    name: r.name,
+                    startTime: r.startTime ? r.startTime.substring(0, 5) : '00:00',
+                    endTime: r.endTime ? r.endTime.substring(0, 5) : '23:59',
+                    days: r.days || [],
+                    lockType: r.lockType || 'FULL',
+                    lockedApps: r.blockedApps || [],
+                    isActive: r.isActive,
+                    source: 'SERVER',
+                    isReadOnly: r.createdBy !== profile.id
+                }) as Schedule);
+            }
+
+            // Merge All
+            const newSchedules = [...personalSchedules];
+            remoteSchedules.forEach(rs => {
+                if (!newSchedules.find(ps => ps.id === rs.id)) {
+                    newSchedules.push(rs);
+                }
+            });
+
+            console.log(`[LockService] Merged ${newSchedules.length} schedules (Personal: ${personalSchedules.length}, Remote: ${remoteSchedules.length})`);
+
+            // 4. Cancel alarms for schedules removed completely
             const newIds = new Set(newSchedules.map(s => s.id));
             for (const old of oldSchedules) {
                 if (!newIds.has(old.id)) {
                     await NativeLockControl.cancelAlarm(old.id);
-                    console.log(`[LockService] Cancelled removed schedule: ${old.name}`);
                 }
             }
 
-            // 4. Update alarms for new/updated schedules
+            // 5. Update alarms for new/updated schedules
             const prevent = await StorageService.getPreventAppRemoval();
             const notifSettings = await StorageService.getNotificationSettings();
 
@@ -78,16 +104,16 @@ export const LockService = {
                         console.log(`[LockService] Scheduled alarm: ${schedule.name}`);
                     }
                 } else {
-                    if (hasChanged || old === undefined) {
+                    if (hasChanged) {
                         await NativeLockControl.cancelAlarm(schedule.id);
                     }
                 }
             }
 
-            // 5. Persist to Local Storage
+            // 6. Persist to Local Storage
             await StorageService.overwriteSchedules(newSchedules);
 
-            // 6. Restore Lock State
+            // 7. Restore Lock State (in case one should be active right now)
             await NativeLockControl.restoreLockState();
             console.log("[LockService] Sync completed.");
 
