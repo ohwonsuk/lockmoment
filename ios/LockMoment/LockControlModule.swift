@@ -55,33 +55,70 @@ class LockControl: NSObject {
   @objc(presentFamilyActivityPicker:resolve:rejecter:)
   func presentFamilyActivityPicker(_ lockType: String?, resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     if #available(iOS 15.0, *) {
+      // CRITICAL: Check authorization FIRST before attempting to present picker
+      let authStatus = AuthorizationCenter.shared.authorizationStatus
+      
+      if authStatus != .approved {
+        // Authorization not granted - reject immediately
+        reject("AUTH_REQUIRED", "Screen Time authorization is required. Please grant permission in Settings.", nil)
+        return
+      }
+      
       DispatchQueue.main.async {
         let type = lockType ?? "app"
         LockModel.shared.currentType = type
         
-        guard let window = UIApplication.shared.windows.first(where: { $0.isKeyWindow }),
-              let rootViewController = window.rootViewController else {
-          reject("UI_ERROR", "Could not find key window or root view controller", nil)
+        // Find the key window and root view controller in a standard way
+        var keyWindow: UIWindow?
+        if #available(iOS 13.0, *) {
+            keyWindow = UIApplication.shared.connectedScenes
+                .filter({ $0.activationState == .foregroundActive })
+                .map({ $0 as? UIWindowScene })
+                .compactMap({ $0 })
+                .first?.windows
+                .filter({ $0.isKeyWindow }).first
+        }
+        
+        if keyWindow == nil {
+            keyWindow = UIApplication.shared.windows.first(where: { $0.isKeyWindow })
+        }
+
+        guard let rootViewController = keyWindow?.rootViewController else {
+          reject("UI_ERROR", "Could not find root view controller", nil)
           return
         }
         
         var topController = rootViewController
-        while let presented = topController.presentedViewController, !presented.isBeingDismissed {
-            topController = presented
+        while let presented = topController.presentedViewController {
+             if presented.isBeingDismissed { break }
+             topController = presented
         }
         
-        let pickerView = PickerView {
-            topController.dismiss(animated: true) {
-                let sel = LockModel.shared.currentType == "phone" ? LockModel.shared.phoneSelection : LockModel.shared.appSelection
-                let count = sel.applicationTokens.count + sel.categoryTokens.count
-                resolve(count)
-            }
+        // Get current selection based on type
+        let currentSelection = LockModel.shared.currentType == "phone" 
+            ? LockModel.shared.phoneSelection 
+            : LockModel.shared.appSelection
+        
+        let pickerView = PickerView(initialSelection: currentSelection) { newSelection in
+             // Save the new selection back to the appropriate property
+             if LockModel.shared.currentType == "phone" {
+                 LockModel.shared.phoneSelection = newSelection
+             } else {
+                 LockModel.shared.appSelection = newSelection
+             }
+             
+             topController.dismiss(animated: true) {
+                 let count = newSelection.applicationTokens.count + newSelection.categoryTokens.count
+                 resolve(count)
+             }
         }
+        
         let hostingController = UIHostingController(rootView: pickerView)
         hostingController.modalPresentationStyle = .formSheet
         topController.present(hostingController, animated: true, completion: nil)
       }
-    } else {
+    }
+ else {
       reject("OS_VERSION_ERROR", "Requires iOS 15.0+", nil)
     }
   }
@@ -135,9 +172,18 @@ class LockControl: NSObject {
   @objc(getSelectedAppCount:rejecter:)
   func getSelectedAppCount(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     if #available(iOS 15.0, *) {
-      let sel = LockModel.shared.selection // This returns based on currentType
-      let count = sel.applicationTokens.count + sel.categoryTokens.count
-      resolve(count)
+      let sel = LockModel.shared.appSelection
+      resolve(sel.applicationTokens.count)
+    } else {
+      resolve(0)
+    }
+  }
+
+  @objc(getSelectedCategoryCount:rejecter:)
+  func getSelectedCategoryCount(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    if #available(iOS 15.0, *) {
+      let sel = LockModel.shared.appSelection
+      resolve(sel.categoryTokens.count)
     } else {
       resolve(0)
     }
@@ -157,12 +203,22 @@ class LockControl: NSObject {
   func getRemainingTime(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     if #available(iOS 15.0, *) {
         _ = LockModel.shared.checkExpiration()
+        
+        // Priority 1: Manual/Timed Lock
         if let endTime = LockModel.shared.endTime {
-            let remaining = endTime.timeIntervalSince(Date()) * 1000 // Convert to ms
+            let remaining = endTime.timeIntervalSince(Date()) * 1000
             resolve(max(0, remaining))
-        } else {
-            resolve(0)
+            return
         }
+        
+        // Priority 2: Scheduled Lock
+        if let scheduledEnd = LockModel.shared.scheduledEndTime {
+            let remaining = scheduledEnd.timeIntervalSince(Date()) * 1000
+            resolve(max(0, remaining))
+            return
+        }
+        
+        resolve(0)
     } else {
         resolve(0)
     }
@@ -170,6 +226,9 @@ class LockControl: NSObject {
 
   @objc(restoreLockState:rejecter:)
   func restoreLockState(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    if #available(iOS 15.0, *) {
+        _ = LockModel.shared.checkExpiration()
+    }
     resolve(true)
   }
 
@@ -271,12 +330,13 @@ class LockControl: NSObject {
               // Save policy per weekday activity to shared defaults
               let defaults = UserDefaults(suiteName: "group.com.lockmoment") ?? UserDefaults.standard
               
-              let sel = lockType.uppercased() == "APP" ? LockModel.shared.appSelection : LockModel.shared.phoneSelection
+              let normalizedType = (lockType == "APP_ONLY" || lockType.uppercased() == "APP") ? "APP" : "FULL"
+              let sel = normalizedType == "APP" ? LockModel.shared.appSelection : LockModel.shared.phoneSelection
               // Use PropertyListEncoder for native Apple types like FamilyActivitySelection
               let encodedSelection = try? PropertyListEncoder().encode(sel)
 
               let policy: [String: Any] = [
-                  "lockType": lockType,
+                  "lockType": normalizedType,
                   "preventAppRemoval": preventAppRemoval,
                   "name": name,
                   "selection": encodedSelection as Any,
@@ -323,6 +383,63 @@ class LockControl: NSObject {
       } else {
           resolve(true)
       }
+  }
+
+  @objc(stopActiveSchedules:rejecter:)
+  func stopActiveSchedules(_ resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
+    if #available(iOS 15.0, *) {
+        let defaults = UserDefaults(suiteName: "group.com.lockmoment") ?? UserDefaults.standard
+        let now = Date()
+        let calendar = Calendar.current
+        let weekday = calendar.component(.weekday, from: now)
+        let hour = calendar.component(.hour, from: now)
+        let minute = calendar.component(.minute, from: now)
+        let totalMinutes = hour * 60 + minute
+        
+        let allKeys = defaults.dictionaryRepresentation().keys
+        var stoppedIds: [String] = []
+        let center = DeviceActivityCenter()
+        
+        for key in allKeys where key.hasPrefix("policy_") {
+            if let policy = defaults.dictionary(forKey: key),
+               let startH = policy["startHour"] as? Int,
+               let startM = policy["startMinute"] as? Int,
+               let endH = policy["endHour"] as? Int,
+               let endM = policy["endMinute"] as? Int {
+                
+                let startTotal = startH * 60 + startM
+                let endTotal = endH * 60 + endM
+                
+                let inRange = (startTotal <= endTotal) ? 
+                    (totalMinutes >= startTotal && totalMinutes < endTotal) :
+                    (totalMinutes >= startTotal || totalMinutes < endTotal)
+                
+                if inRange {
+                    let parts = key.split(separator: "_")
+                    if parts.count >= 2 {
+                        let scheduleId = String(parts[1])
+                        if !stoppedIds.contains(scheduleId) {
+                            stoppedIds.append(scheduleId)
+                            
+                            // Stop monitoring and remove policy
+                            let days = [1,2,3,4,5,6,7]
+                            let activityNames = [DeviceActivityName.schedule(scheduleId)] + days.map { DeviceActivityName.schedule("\(scheduleId)_\($0)") }
+                            center.stopMonitoring(activityNames)
+                            
+                            for w in 1...7 {
+                                defaults.removeObject(forKey: "policy_\(scheduleId)_\(w)")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        LockModel.shared.stopLock(status: "중단")
+        resolve(stoppedIds)
+    } else {
+        resolve([])
+    }
   }
 
   @objc(openDefaultDialer:rejecter:)

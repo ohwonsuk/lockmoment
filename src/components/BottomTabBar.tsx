@@ -7,36 +7,25 @@ import { Colors } from '../theme/Colors';
 import { useAppNavigation } from '../navigation/NavigationContext';
 import { StorageService } from '../services/StorageService';
 
+type TabItem = {
+    name: string;
+    label: string;
+    icon: string;
+};
+
+const getTabs = (): TabItem[] => {
+    return [
+        { name: 'Dashboard', label: '내 잠금', icon: 'lock-closed' },
+        { name: 'ScheduleList', label: '스케쥴', icon: 'calendar' },
+        { name: 'QRScanner', label: 'QR스캔', icon: 'qr-code' },
+        { name: 'Notification', label: '알림', icon: 'notifications' },
+        { name: 'MyInfo', label: '내 정보', icon: 'person' },
+    ];
+};
+
 export const BottomTabBar: React.FC = () => {
     const insets = useSafeAreaInsets();
     const { currentScreen, navigate } = useAppNavigation();
-    const [userRole, setUserRole] = React.useState<string | null>(null);
-
-    React.useEffect(() => {
-        const loadRole = async () => {
-            const role = await StorageService.getUserRole();
-            setUserRole(role);
-        };
-        loadRole();
-    }, [currentScreen]);
-
-    const getTabs = () => {
-        if (userRole === 'STUDENT' || userRole === 'CHILD') {
-            return [
-                { name: 'Dashboard', label: '잠금', icon: 'lock-closed' },
-                { name: 'ScheduleList', label: '스케줄', icon: 'calendar' }, // 스케줄 확인용
-                { name: 'QRScanner', label: 'QR스캔', icon: 'qr-code' },
-                { name: 'MyInfo', label: '내 정보', icon: 'person' },
-            ];
-        }
-        return [
-            { name: 'Dashboard', label: '잠금', icon: 'lock-closed' },
-            { name: 'Children', label: '자녀', icon: 'people' },
-            { name: 'QR', label: 'QR', icon: 'qr-code' },
-            { name: 'Notification', label: '알림', icon: 'notifications' },
-            { name: 'MyInfo', label: '내 정보', icon: 'person' },
-        ];
-    };
 
     const tabs = getTabs();
 
@@ -45,9 +34,8 @@ export const BottomTabBar: React.FC = () => {
             {tabs.map((tab) => {
                 const isActive = currentScreen === tab.name ||
                     (tab.name === 'Dashboard' && (currentScreen === 'Dashboard' || currentScreen === 'Locking')) ||
-                    (tab.name === 'History' && currentScreen === 'History') ||
+                    (tab.name === 'ScheduleList' && currentScreen === 'ScheduleList') ||
                     (tab.name === 'MyInfo' && (currentScreen === 'MyInfo' || currentScreen === 'Settings'));
-                // Map other screens to tabs if necessary
 
                 return (
                     <TouchableOpacity

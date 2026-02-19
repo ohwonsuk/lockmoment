@@ -24,12 +24,13 @@ import { MetaDataService, AppCategory } from '../services/MetaDataService';
 const isIOS = Platform.OS === 'ios';
 const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
 
-export const QRGeneratorScreen: React.FC = () => {
+export const QRGeneratorScreen: React.FC<{ forcedType?: 'INSTANT' | 'SCHEDULED' }> = ({ forcedType }) => {
     const { navigate, currentParams } = useAppNavigation();
     const params = currentParams || {};
 
     // Base State
-    const [qrType, setQrType] = useState<'INSTANT' | 'SCHEDULED'>('INSTANT');
+    const [qrType, setQrType] = useState<'INSTANT' | 'SCHEDULED'>(forcedType || params.type || 'INSTANT');
+    const isDirectNavigation = !!params.type; // params.type이 있으면 직접 네비게이션
     const [lockTitle, setLockTitle] = useState(params.title || '바로 잠금');
     const [duration, setDuration] = useState(params.duration || 60);
     const [selectedApps, setSelectedApps] = useState<string[]>(params.apps || UniversalAppMapper.getDefaultUniversalIds());
@@ -42,7 +43,8 @@ export const QRGeneratorScreen: React.FC = () => {
 
     // Child Selection
     const [children, setChildren] = useState<ChildInfo[]>([]);
-    const [selectedChildId, setSelectedChildId] = useState<string>('all'); // 'all' or specific id
+    const [selectedChildId, setSelectedChildId] = useState<string>(params.childId || 'all');
+    const [isPersonal, setIsPersonal] = useState(params.isPersonal || false);
 
     // Schedule State (for SCHEDULED tab)
     const getRoundedDate = (date: Date) => {
@@ -110,18 +112,46 @@ export const QRGeneratorScreen: React.FC = () => {
     const loadData = async () => {
         setIsLoadingPresets(true);
         try {
-            const [childrenData, systemPresets, categories] = await Promise.all([
+            const [childrenData, systemPresets, personalPresets, categories] = await Promise.all([
                 ParentChildService.getLinkedChildren(),
                 PresetService.getPresets('SYSTEM'),
+                PresetService.getPersonalPresets(),
                 MetaDataService.getAppCategories()
             ]);
 
             setChildren(childrenData);
-            setPresets(systemPresets);
+
+            // Filter presets based on qrType
+            const filteredPersonalPresets = personalPresets.filter(p => {
+                if (qrType === 'INSTANT') {
+                    return !p.preset_type || p.preset_type === 'INSTANT';
+                } else {
+                    return p.preset_type === 'SCHEDULED';
+                }
+            });
+
+            // 자녀가 없거나 명시적으로 개인 잠금인 경우
+            const activeIsPersonal = childrenData.length === 0 || params.isPersonal;
+            if (activeIsPersonal) {
+                setIsPersonal(true);
+                setSelectedChildId('personal');
+            }
+
+            // If personal mode, show only personal presets. Otherwise show both.
+            setPresets(activeIsPersonal ? filteredPersonalPresets : [...filteredPersonalPresets, ...systemPresets]);
             setAllCategories(categories);
 
-            // 초기 Preset 선택 (수업 집중 등)
-            if (systemPresets.length > 0) {
+            // 초기 Preset 선택
+            if (activeIsPersonal) {
+                // 개인 모드일 때는 첫 번째 개인 프리셋이 있으면 선택, 없으면 미선택
+                if (filteredPersonalPresets.length > 0) {
+                    handlePresetSelect(filteredPersonalPresets[0]);
+                } else {
+                    setSelectedPresetId(null);
+                    setLockTitle(qrType === 'INSTANT' ? '바로 잠금' : '예약 잠금');
+                }
+            } else if (systemPresets.length > 0) {
+                // 부모 모드일 때는 기존처럼 '수업' 포함 프리셋 등 선택
                 const defaultPreset = systemPresets.find(p => p.name.includes('수업')) || systemPresets[0];
                 handlePresetSelect(defaultPreset);
             }
@@ -187,14 +217,37 @@ export const QRGeneratorScreen: React.FC = () => {
             const eStr = `${endTime.getHours().toString().padStart(2, '0')}:${endTime.getMinutes().toString().padStart(2, '0')}`;
 
             const isAppLock = selectedApps.length > 0 || selectedCategories.length > 0;
+            const lockType = (isAppLock || (selectedPresetId && presets.find(p => p.id === selectedPresetId)?.lock_type === 'APP_ONLY')) ? 'APP' : 'FULL';
+
+            if (isPersonal || selectedChildId === 'personal') {
+                const newSchedule = {
+                    id: `personal_${Date.now()}`,
+                    name: lockTitle,
+                    startTime: sStr,
+                    endTime: eStr,
+                    days: selectedDays,
+                    lockType: lockType,
+                    lockedApps: selectedApps.length > 0 ? selectedApps : undefined,
+                    isActive: true,
+                    source: 'LOCAL' as any
+                };
+                // StorageService에 로컬로 저장
+                const { StorageService } = require('../services/StorageService');
+                await StorageService.saveSchedule(newSchedule);
+
+                if (!silent) {
+                    Alert.alert("저장 완료", "개인 예약 잠금이 저장되었습니다.");
+                }
+                return true;
+            }
 
             const schedule = {
                 name: lockTitle,
                 startTime: sStr,
                 endTime: eStr,
                 days: selectedDays,
-                lockType: (isAppLock || (selectedPresetId && presets.find(p => p.id === selectedPresetId)?.lock_type === 'APP_ONLY')) ? 'APP' : 'FULL',
-                allowedApps: undefined, // Explicitly undefined as per previous logic
+                lockType: lockType as any,
+                allowedApps: undefined,
                 blockedApps: selectedApps.length > 0 ? selectedApps : undefined,
                 allowedCategories: undefined,
                 blockedCategories: selectedCategories.length > 0 ? selectedCategories : undefined,
@@ -255,9 +308,10 @@ export const QRGeneratorScreen: React.FC = () => {
 
         try {
             setQrValue(""); // 생성 시작 시 이전 값 초기화하여 혼선 방지
-            console.log(`[QRGenerator] Generating ${qrType} QR for child ${selectedChildId}...`);
+            console.log(`[QRGenerator] Generating ${qrType} QR for ${isPersonal ? 'personal' : 'child ' + selectedChildId}...`);
 
-            let qr_type: 'DYNAMIC' | 'STATIC' = 'DYNAMIC';
+            // 개인용은 고정(STATIC) 타입 권장
+            let qr_type: 'DYNAMIC' | 'STATIC' = isPersonal ? 'STATIC' : 'DYNAMIC';
 
             const selectedPreset = presets.find(p => p.id === selectedPresetId);
             let purpose: any = selectedPreset?.purpose || (qrType === 'INSTANT' ? 'LOCK_ONLY' : 'LOCK_AND_ATTENDANCE');
@@ -388,32 +442,37 @@ export const QRGeneratorScreen: React.FC = () => {
 
     return (
         <View style={styles.container}>
-            <Header title="QR 생성" showBack />
+            <Header
+                title={isDirectNavigation ? (qrType === 'INSTANT' ? "바로잠금" : "예약잠금") : "QR 생성"}
+                showBack={isDirectNavigation}
+            />
 
-            <View style={styles.tabContainer}>
-                <TouchableOpacity
-                    style={[styles.tab, qrType === 'INSTANT' && styles.activeTab]}
-                    onPress={() => {
-                        setQrType('INSTANT');
-                        setQrValue("");
-                        setLastGeneratedConfig("");
-                        setIsStale(false);
-                    }}
-                >
-                    <Typography bold={qrType === 'INSTANT'} color={qrType === 'INSTANT' ? Colors.primary : Colors.textSecondary}>즉시 잠금</Typography>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={[styles.tab, qrType === 'SCHEDULED' && styles.activeTab]}
-                    onPress={() => {
-                        setQrType('SCHEDULED');
-                        setQrValue("");
-                        setLastGeneratedConfig("");
-                        setIsStale(false);
-                    }}
-                >
-                    <Typography bold={qrType === 'SCHEDULED'} color={qrType === 'SCHEDULED' ? Colors.primary : Colors.textSecondary}>예약 잠금</Typography>
-                </TouchableOpacity>
-            </View>
+            {!isDirectNavigation && (
+                <View style={styles.tabContainer}>
+                    <TouchableOpacity
+                        style={[styles.tab, qrType === 'INSTANT' && styles.activeTab]}
+                        onPress={() => {
+                            setQrType('INSTANT');
+                            setQrValue("");
+                            setLastGeneratedConfig("");
+                            setIsStale(false);
+                        }}
+                    >
+                        <Typography bold={qrType === 'INSTANT'} color={qrType === 'INSTANT' ? Colors.primary : Colors.textSecondary}>즉시 잠금</Typography>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[styles.tab, qrType === 'SCHEDULED' && styles.activeTab]}
+                        onPress={() => {
+                            setQrType('SCHEDULED');
+                            setQrValue("");
+                            setLastGeneratedConfig("");
+                            setIsStale(false);
+                        }}
+                    >
+                        <Typography bold={qrType === 'SCHEDULED'} color={qrType === 'SCHEDULED' ? Colors.primary : Colors.textSecondary}>예약 잠금</Typography>
+                    </TouchableOpacity>
+                </View>
+            )}
 
             <View style={styles.presetSection}>
                 <View style={styles.sectionHeader}>
@@ -433,32 +492,46 @@ export const QRGeneratorScreen: React.FC = () => {
                     )}
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.presetList}
+                    ListEmptyComponent={() => (
+                        <View style={{ paddingHorizontal: 20, paddingVertical: 12 }}>
+                            <Typography variant="caption" color={Colors.textSecondary}>등록된 사전등록이 없습니다.</Typography>
+                        </View>
+                    )}
                 />
+                <TouchableOpacity
+                    style={styles.addPresetButton}
+                    onPress={() => navigate('PersonalPreset')}
+                >
+                    <Icon name="add-circle-outline" size={20} color={Colors.primary} />
+                    <Typography color={Colors.primary} bold style={{ marginLeft: 6 }}>사전등록하기</Typography>
+                </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.configContainer}>
-                    {/* 대상 자녀 선택 */}
-                    <View style={styles.inputGroup}>
-                        <Typography variant="caption" color={Colors.textSecondary} style={{ marginBottom: 8 }}>잠금 대상 자녀</Typography>
-                        <View style={styles.childSelector}>
-                            <TouchableOpacity
-                                style={[styles.childItem, selectedChildId === 'all' && styles.childItemActive]}
-                                onPress={() => setSelectedChildId('all')}
-                            >
-                                <Typography style={{ fontSize: 13 }} bold={selectedChildId === 'all'} color={selectedChildId === 'all' ? Colors.primary : Colors.text}>전체</Typography>
-                            </TouchableOpacity>
-                            {children.map(child => (
+                    {/* 대상 자녀 선택 - 일반 사용자는 항상 숨김 */}
+                    {false && !isPersonal && (
+                        <View style={styles.inputGroup}>
+                            <Typography variant="caption" color={Colors.textSecondary} style={{ marginBottom: 8 }}>잠금 대상 자녀</Typography>
+                            <View style={styles.childSelector}>
                                 <TouchableOpacity
-                                    key={child.id}
-                                    style={[styles.childItem, selectedChildId === child.id && styles.childItemActive]}
-                                    onPress={() => setSelectedChildId(child.id)}
+                                    style={[styles.childItem, selectedChildId === 'all' && styles.childItemActive]}
+                                    onPress={() => setSelectedChildId('all')}
                                 >
-                                    <Typography style={{ fontSize: 13 }} bold={selectedChildId === child.id} color={selectedChildId === child.id ? Colors.primary : Colors.text}>{child.childName}</Typography>
+                                    <Typography style={{ fontSize: 13 }} bold={selectedChildId === 'all'} color={selectedChildId === 'all' ? Colors.primary : Colors.text}>전체</Typography>
                                 </TouchableOpacity>
-                            ))}
+                                {children.map(child => (
+                                    <TouchableOpacity
+                                        key={child.id}
+                                        style={[styles.childItem, selectedChildId === child.id && styles.childItemActive]}
+                                        onPress={() => setSelectedChildId(child.id)}
+                                    >
+                                        <Typography style={{ fontSize: 13 }} bold={selectedChildId === child.id} color={selectedChildId === child.id ? Colors.primary : Colors.text}>{child.childName}</Typography>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
                         </View>
-                    </View>
+                    )}
 
                     <View style={styles.inputGroup}>
                         <Typography variant="caption" color={Colors.textSecondary} style={{ marginBottom: 8 }}>잠금 제목</Typography>
@@ -553,6 +626,24 @@ export const QRGeneratorScreen: React.FC = () => {
                         </TouchableOpacity>
                     )}
                 </View>
+
+                {(() => {
+                    const selectedChild = children.find(c => c.id === selectedChildId);
+                    if (!isPersonal && selectedChild && selectedChild.hasAppSelection === false) {
+                        return (
+                            <View style={styles.warningBox}>
+                                <Icon name="alert-circle" size={24} color="#EF4444" />
+                                <View style={{ flex: 1, marginLeft: 12 }}>
+                                    <Typography bold color="#EF4444">❌ 자녀 기기에서 차단 대상이 아직 설정되지 않았어요</Typography>
+                                    <Typography variant="caption" color="#EF4444">
+                                        자녀의 LockMoment 앱에서 ‘앱 잠금 설정’을 먼저 완료해야 예약 잠금을 설정할 수 있습니다.
+                                    </Typography>
+                                </View>
+                            </View>
+                        );
+                    }
+                    return null;
+                })()}
 
                 <View style={styles.qrContainer}>
                     {qrValue ? (
@@ -758,7 +849,20 @@ const styles = StyleSheet.create({
     presetSection: { width: '100%', paddingVertical: 10, paddingLeft: 20 },
     sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
     presetList: { paddingRight: 20 },
+    addPresetButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, marginTop: 8 },
     scrollContent: { padding: 20, alignItems: 'center' },
+    warningBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        backgroundColor: '#EF444415',
+        marginHorizontal: 10,
+        marginBottom: 20,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#EF444430',
+        width: '100%',
+    },
     configContainer: { width: '100%', backgroundColor: Colors.card, padding: 16, borderRadius: 20, marginBottom: 20, borderWidth: 1, borderColor: Colors.border },
     inputGroup: { marginBottom: 16 },
     textInput: { backgroundColor: Colors.background, borderRadius: 10, padding: 12, color: Colors.text, fontSize: 16, borderWidth: 1, borderColor: Colors.border },

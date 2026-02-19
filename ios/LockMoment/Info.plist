@@ -110,5 +110,7 @@
 	<string>QR 코드를 갤러리에 저장하기 위해 사진 라이브러리 접근 권한이 필요합니다.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>QR 코드를 갤러리에 저장하기 위해 사진 라이브러리 접근 권한이 필요합니다.</string>
+	<key>NSFamilyControlsUsageDescription</key>
+	<string>앱 잠금 기능을 사용하기 위해 스크린타임 권한이 필요합니다.</string>
 </dict>
 </plist>

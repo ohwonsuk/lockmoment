@@ -139,6 +139,18 @@ export const ChildDetailScreen: React.FC = () => {
                     </View>
                 </View>
 
+                {child.hasAppSelection === false && (
+                    <View style={styles.warningBox}>
+                        <Icon name="alert-circle" size={24} color="#EF4444" />
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Typography bold color="#EF4444">❌ 자녀 기기에서 차단 대상이 아직 설정되지 않았어요</Typography>
+                            <Typography variant="caption" color="#EF4444">
+                                자녀의 휴대폰에서 ‘앱 잠금 설정’을 먼저 완료해야 원격/예약 잠금을 설정할 수 있습니다.
+                            </Typography>
+                        </View>
+                    </View>
+                )}
+
                 {/* Device Change Notice / Action */}
                 <View style={styles.relinkNotice}>
                     <Icon name="information-circle-outline" size={20} color={Colors.primary} />
@@ -162,7 +174,7 @@ export const ChildDetailScreen: React.FC = () => {
                         </View>
                         <Typography bold style={{ marginTop: 8 }}>잠금 설정</Typography>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionButton} onPress={() => { }}>
+                    <TouchableOpacity style={styles.actionButton} onPress={() => navigate('UsageReport', { childId: child.id })}>
                         <View style={[styles.actionIcon, { backgroundColor: '#10B98115' }]}>
                             <Icon name="stats-chart" size={24} color="#10B981" />
                         </View>
@@ -425,6 +437,16 @@ const styles = StyleSheet.create({
         padding: 40,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    warningBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        backgroundColor: '#EF444415',
+        marginBottom: 20,
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#EF444430',
     },
     scheduleItem: {
         flexDirection: 'row',

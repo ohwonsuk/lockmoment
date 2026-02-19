@@ -3,25 +3,28 @@ import FamilyControls
 
 @available(iOS 15.0, *)
 struct PickerView: View {
-    @StateObject var model = LockModel.shared
+    @State private var selection: FamilyActivitySelection
     @State private var isPickerPresented = false
-    var onDismiss: () -> Void
+    
+    let onDismiss: (FamilyActivitySelection) -> Void
+    
+    init(initialSelection: FamilyActivitySelection, onDismiss: @escaping (FamilyActivitySelection) -> Void) {
+        self._selection = State(initialValue: initialSelection)
+        self.onDismiss = onDismiss
+    }
     
     var body: some View {
-        VStack {
-            Text("Opening Picker...")
-                .onAppear {
-                    // Small delay to ensure view is mounted before presenting picker
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        isPickerPresented = true
-                    }
+        Color.clear
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isPickerPresented = true
                 }
-        }
-        .familyActivityPicker(isPresented: $isPickerPresented, selection: $model.selection)
-        .onChange(of: isPickerPresented) { isPresented in
-            if !isPresented {
-                onDismiss()
             }
-        }
+            .familyActivityPicker(isPresented: $isPickerPresented, selection: $selection)
+            .onChange(of: isPickerPresented) { isPresented in
+                if !isPresented {
+                    onDismiss(selection)
+                }
+            }
     }
 }

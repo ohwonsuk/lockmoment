@@ -5,6 +5,7 @@ import { Header } from '../components/Header';
 import { QuickLockCard } from '../components/QuickLockCard';
 import { Typography } from '../components/Typography';
 import { NativeLockControl } from '../services/NativeLockControl';
+import { apiService } from '../services/ApiService';
 import { useAppNavigation } from '../navigation/NavigationContext';
 import { QuickLockPicker } from '../components/QuickLockPicker';
 import { Icon } from '../components/Icon';
@@ -81,6 +82,30 @@ export const DashboardScreen: React.FC = () => {
                 const remaining = await NativeLockControl.getRemainingTime();
                 setRemainingTime(remaining);
                 setEndTimeDate(new Date(Date.now() + remaining));
+
+                // If natively locked, ensure server knows about it (for monitoring/history)
+                // This handles scheduled locks that started while app was closed
+                if (remaining > 0) {
+                    // Check local cache/ref to avoid repeated API calls
+                    const lastReported = (globalThis as any).lastLockReportTime || 0;
+                    if (Date.now() - lastReported > 60000) { // Check every 1 minute
+                        // Try to fetch current lock from server to see if we need to report
+                        try {
+                            const res: any = await apiService.get('/locks/status');
+                            if (!res.isLocked) {
+                                // Server thinks we are unlocked, let's report back the current state
+                                await LockService.reportLockStart({
+                                    lockName: "예약 잠금", // Fallback name
+                                    lockType: 'APP', // Default
+                                    durationMinutes: Math.ceil(remaining / 60000),
+                                    source: 'SCHEDULED'
+                                });
+                            }
+                        } catch (e) { /* server might not have /locks/status yet, ignore for now */ }
+                        (globalThis as any).lastLockReportTime = Date.now();
+                    }
+                }
+
                 if (remaining <= 0) {
                     await NativeLockControl.stopLock();
                     setIsLocked(false);
@@ -98,6 +123,33 @@ export const DashboardScreen: React.FC = () => {
         if (userRole === 'PARENT' || userRole === 'TEACHER') {
             loadChildren();
             loadPresets();
+        } else if (Platform.OS === 'ios') {
+            checkAppLockSelection();
+        }
+    };
+
+    const checkAppLockSelection = async () => {
+        try {
+            console.log('[Dashboard] Checking app selection methods:', {
+                hasGetApp: typeof NativeLockControl.getSelectedAppCount === 'function',
+                hasGetCat: typeof NativeLockControl.getSelectedCategoryCount === 'function'
+            });
+
+            if (typeof NativeLockControl.getSelectedCategoryCount !== 'function') {
+                console.warn('[Dashboard] getSelectedCategoryCount is not a function. Skipping check.');
+                return;
+            }
+
+            const [aCount, cCount] = await Promise.all([
+                NativeLockControl.getSelectedAppCount(),
+                NativeLockControl.getSelectedCategoryCount()
+            ]);
+            if (aCount === 0 && cCount === 0) {
+                // Mandatory selection for iOS
+                navigate('AppLockSettings');
+            }
+        } catch (e) {
+            console.error('[Dashboard] Failed to check app selection:', e);
         }
     };
 
@@ -148,7 +200,7 @@ export const DashboardScreen: React.FC = () => {
             navigate('Permissions');
             return;
         }
-        setIsPickerVisible(true);
+        navigate('QRGenerator', { type: 'INSTANT', isPersonal: true });
     };
 
     const handleQuickLockConfirm = async (h: number, m: number, type: 'APP' | 'FULL', packagesJson?: string) => {
@@ -176,16 +228,37 @@ export const DashboardScreen: React.FC = () => {
     const handleStopLock = async () => {
         showAlert({
             title: "잠금 조기 종료",
-            message: "관리자 권한으로 잠금을 종료하시겠습니까?",
+            message: "관리자 권한으로 잠금을 종료하시겠습니까? (현재 진행 중인 예약 잠금은 비활성화됩니다)",
             confirmText: "종료",
             cancelText: "취소",
             onConfirm: async () => {
-                await NativeLockControl.stopLock();
+                try {
+                    // 1. 네이티브단에서 현재 활성화된 모든 정책(UserDefaults)을 찾아서 제거
+                    // JS 사이드에서 시간 계산의 오차나 누락된 스케줄이 있을 수 있으므로 네이티브 스캔이 가장 확실함
+                    const stoppedIds = await NativeLockControl.stopActiveSchedules();
+                    console.log(`[Dashboard] Native stop active schedules result:`, stoppedIds);
 
-                // Report to server
-                await LockService.reportLockStop();
+                    if (stoppedIds && stoppedIds.length > 0) {
+                        // 2. 중단된 스케줄들에 대해 로컬 상태(AsyncStorage) 업데이트
+                        const currentSchedules = await StorageService.getSchedules();
+                        const updated = currentSchedules.map(s => {
+                            if (stoppedIds.includes(s.id)) {
+                                return { ...s, isActive: false };
+                            }
+                            return s;
+                        });
+                        await StorageService.overwriteSchedules(updated);
+                        setSchedules(updated);
+                    }
 
-                updateStatus();
+                    // 3. 수동/타이머 잠금 강제 종료 및 상태 보고
+                    await NativeLockControl.stopLock();
+                    await LockService.reportLockStop();
+                    updateStatus();
+                } catch (error: any) {
+                    console.error('Failed to stop lock:', error);
+                    showAlert({ title: "오류", message: "잠금 종료 중 오류가 발생했습니다." });
+                }
             }
         });
     };
@@ -298,24 +371,18 @@ export const DashboardScreen: React.FC = () => {
                     )}
                 </View>
             ) : (
-                <>
-                    <QuickLockCard onPress={handleQuickLock} />
-                    {/* Quick Access QRs */}
-                    <View style={styles.qrActions}>
-                        <TouchableOpacity style={styles.qrActionButton} onPress={() => navigate('QRGenerator' as any, { type: 'INSTANT' })}>
-                            <View style={[styles.qrIconBadge, { backgroundColor: '#6366F115' }]}>
-                                <Icon name="qr-code" size={24} color="#6366F1" />
-                            </View>
-                            <Typography variant="caption" bold>내 QR 생성</Typography>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.qrActionButton} onPress={() => navigate('AddSchedule' as any)}>
-                            <View style={[styles.qrIconBadge, { backgroundColor: '#EC489915' }]}>
-                                <Icon name="calendar" size={24} color="#EC4899" />
-                            </View>
-                            <Typography variant="caption" bold>예약 잠금</Typography>
-                        </TouchableOpacity>
-                    </View>
-                </>
+                <View style={styles.mainActions}>
+                    <TouchableOpacity style={[styles.mainActionButton, { backgroundColor: Colors.primary }]} onPress={handleQuickLock}>
+                        <Icon name="lock-closed" size={32} color="#FFF" />
+                        <Typography variant="h2" bold color="#FFF" style={{ marginTop: 12 }}>바로 잠금</Typography>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.mainActionButton, { backgroundColor: Colors.card }]} onPress={() => navigate('QRGenerator', { type: 'SCHEDULED', isPersonal: true })}>
+                        <View style={[styles.iconBadge, { backgroundColor: '#EC489915' }]}>
+                            <Icon name="calendar" size={28} color="#EC4899" />
+                        </View>
+                        <Typography variant="h2" bold style={{ marginTop: 12 }}>예약 잠금</Typography>
+                    </TouchableOpacity>
+                </View>
             )}
 
             <View style={{ height: 24 }} />
@@ -465,6 +532,28 @@ const styles = StyleSheet.create({
         width: 44,
         height: 44,
         borderRadius: 14,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    mainActions: {
+        flexDirection: 'row',
+        paddingHorizontal: 20,
+        gap: 12,
+        marginTop: 10,
+    },
+    mainActionButton: {
+        flex: 1,
+        height: 140, // Adjust height as needed
+        borderRadius: 24,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    iconBadge: {
+        width: 50,
+        height: 50,
+        borderRadius: 15,
         justifyContent: 'center',
         alignItems: 'center',
     },

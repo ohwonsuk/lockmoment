@@ -30,6 +30,9 @@ import { NotificationScreen } from '../screens/NotificationScreen';
 import { MyInfoScreen } from '../screens/MyInfoScreen';
 import { ScheduleListScreen } from '../screens/ScheduleListScreen';
 import { ScheduleEditScreen } from '../screens/ScheduleEditScreen';
+import { UsageReportScreen } from '../screens/UsageReportScreen';
+import { PersonalPresetScreen } from '../screens/PersonalPresetScreen';
+import { AppLockSettingsScreen } from '../screens/AppLockSettingsScreen';
 
 export const AppNavigator: React.FC = () => {
     const { currentScreen, currentParams } = useAppNavigation();
@@ -90,6 +93,13 @@ export const AppNavigator: React.FC = () => {
                 return <ChildDetailScreen />;
             case 'ScheduleEdit':
                 return <ScheduleEditScreen />;
+            case 'UsageReport':
+                return <UsageReportScreen />;
+            case 'PersonalPreset':
+                return <PersonalPresetScreen />;
+            case 'AppLockSettings':
+                return <AppLockSettingsScreen />;
+
             default:
                 return <DashboardScreen />;
         }

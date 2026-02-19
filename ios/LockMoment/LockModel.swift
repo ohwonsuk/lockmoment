@@ -35,6 +35,8 @@ class LockModel: ObservableObject {
     
     @Published var isLocked: Bool = false
     @Published var endTime: Date? = nil
+    var scheduledEndTime: Date? = nil
+    var lockSource: String = "MANUAL" // MANUAL or SCHEDULED
     var currentLockName: String = "바로 잠금"
     var startTime: Date? = nil
     
@@ -44,35 +46,52 @@ class LockModel: ObservableObject {
     private let appSelectionKey = "SelectedApps_app"
     private let phoneSelectionKey = "SelectedApps_phone"
     private let legacySelectionKey = "SelectedApps"
+    private let lockSourceKey = "lockSource"
     
     // Shared defaults for App Group
-    private let sharedDefaults = UserDefaults(suiteName: "group.com.lockmoment") ?? UserDefaults.standard
+    private var sharedDefaults: UserDefaults
     
     private init() {
-        // Load app selection from shared defaults
-        if let data = sharedDefaults.data(forKey: appSelectionKey) ?? sharedDefaults.data(forKey: legacySelectionKey) {
-            self.appSelection = (try? JSONDecoder().decode(FamilyActivitySelection.self, from: data)) ?? FamilyActivitySelection()
-        } else {
-            self.appSelection = FamilyActivitySelection()
+        // Shared defaults for App Group
+        let defaults = UserDefaults(suiteName: "group.com.lockmoment") ?? UserDefaults.standard
+        self.sharedDefaults = defaults
+
+        // 1. Decoder Fallback (Migration: JSON -> PropertyList)
+        func decodeSelection(key: String, legacyKey: String? = nil) -> FamilyActivitySelection {
+            if let data = defaults.data(forKey: key) ?? (legacyKey != nil ? defaults.data(forKey: legacyKey!) : nil) {
+                // Try PropertyList first (Secure Tokens)
+                if let decoded = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data) {
+                    return decoded
+                }
+                // Fallback to JSON (Old format)
+                if let decoded = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) {
+                    return decoded
+                }
+            }
+            return FamilyActivitySelection()
         }
+
+        self.appSelection = decodeSelection(key: appSelectionKey, legacyKey: legacySelectionKey)
+        self.phoneSelection = decodeSelection(key: phoneSelectionKey)
         
-        // Load phone selection
-        if let data = sharedDefaults.data(forKey: phoneSelectionKey) {
-            self.phoneSelection = (try? JSONDecoder().decode(FamilyActivitySelection.self, from: data)) ?? FamilyActivitySelection()
-        } else {
-            self.phoneSelection = FamilyActivitySelection()
-        }
+        // 2. Load State
+        self.isLocked = defaults.bool(forKey: "isLocked")
+        self.lockSource = defaults.string(forKey: lockSourceKey) ?? "MANUAL"
+        self.currentLockName = defaults.string(forKey: "currentLockName") ?? "바로 잠금"
+        self.startTime = defaults.object(forKey: "lockStartTime") as? Date
         
-        self.isLocked = sharedDefaults.bool(forKey: "isLocked")
-        self.currentLockName = sharedDefaults.string(forKey: "currentLockName") ?? "바로 잠금"
-        self.startTime = sharedDefaults.object(forKey: "lockStartTime") as? Date
-        
-        if let time = sharedDefaults.object(forKey: "lockEndTime") as? Date {
+        if let time = defaults.object(forKey: "lockEndTime") as? Date {
             self.endTime = time
             _ = checkExpiration()
         }
         
-        // Initial sync of scheduled locks
+        // 3. Ensure Shield is actually applied if we are in locked state
+        if self.isLocked {
+            let type = defaults.string(forKey: "lockType") ?? "FULL"
+            applyShieldSettings(lockType: type)
+        }
+        
+        // 4. Initial sync of scheduled locks
         checkScheduledLocks()
     }
     
@@ -124,6 +143,25 @@ class LockModel: ObservableObject {
                     
                     if inRange {
                         foundMatch = true
+                        
+                        // Calculate actual end date
+                        let calendar = Calendar.current
+                        var endComponents = calendar.dateComponents([.year, .month, .day], from: now)
+                        endComponents.hour = endH
+                        endComponents.minute = endM
+                        endComponents.second = 0
+                        
+                        if let calculatedEnd = calendar.date(from: endComponents) {
+                            var finalEnd = calculatedEnd
+                            if isOvernight && checkWeekday == yesterday {
+                                // Already in the "next day" part of overnight
+                            } else if isOvernight && totalMinutes >= startTotal {
+                                // In the "first day" part of overnight, end is tomorrow
+                                finalEnd = calendar.date(byAdding: .day, value: 1, to: calculatedEnd) ?? calculatedEnd
+                            }
+                            self.scheduledEndTime = finalEnd
+                        }
+
                         if apply {
                             applyLock(policy: policy)
                         }
@@ -132,20 +170,42 @@ class LockModel: ObservableObject {
                 }
             }
         }
+        self.scheduledEndTime = nil
         return foundMatch
     }
 
     private func applyLock(policy: [String: Any]) {
-        // Prevent re-applying if already locked with the same policy
         let name = policy["name"] as? String ?? "예약 잠금"
+        let type = policy["lockType"] as? String ?? "FULL"
+        let prevent = policy["preventAppRemoval"] as? Bool ?? true
+        
+        // If already locked with the same name, we still might need to ensure shield settings are active
+        // as they could have been cleared by an ending schedule or app restart
         if isLocked && currentLockName == name {
+            // Verify if shield is actually applied (optional but safer)
+            // For simplicity, we can just re-apply if we are in scheduled mode and heartbeat triggers
+            if lockSource == "SCHEDULED" {
+                 // re-applying settings to ensure persistence
+                 applyShieldSettings(lockType: type)
+            }
             return
         }
         
-        if !isLocked || currentLockName != name {
-            let type = policy["lockType"] as? String ?? "FULL"
-            let prevent = policy["preventAppRemoval"] as? Bool ?? true
-            startLock(duration: 0, lockType: type, name: name, preventRemoval: prevent)
+        startLock(duration: 0, lockType: type, name: name, preventRemoval: prevent)
+        self.lockSource = "SCHEDULED"
+    }
+    
+    private func applyShieldSettings(lockType: String) {
+        let normalizedType = lockType.uppercased() == "APP" ? "APP" : "FULL"
+        let sel = normalizedType == "APP" ? appSelection : phoneSelection
+        
+        if normalizedType == "FULL" {
+            store.shield.applications = nil
+            store.shield.applicationCategories = .all()
+        } else {
+            store.shield.applications = sel.applicationTokens
+            store.shield.applicationCategories = .specific(sel.categoryTokens)
+            store.shield.webDomains = sel.webDomainTokens
         }
     }
     
@@ -172,10 +232,9 @@ class LockModel: ObservableObject {
         if endTime == nil {
             let inSchedule = checkScheduledLocks(apply: !isLocked)
             
-            // Auto-unlock if scheduled lock ended
-            // We use a small buffer or check if it was actually a scheduled lock
-            if isLocked && !inSchedule {
-                // If the current lock was started by a schedule (endTime is nil), stop it
+            // Auto-unlock if scheduled lock ended.
+            // ONLY if this was a scheduled lock to begin with.
+            if isLocked && lockSource == "SCHEDULED" && !inSchedule {
                 stopLock(status: "완료")
                 return true
             }
@@ -187,12 +246,26 @@ class LockModel: ObservableObject {
     func saveSelection(type: String) {
         let key = type == "phone" ? phoneSelectionKey : appSelectionKey
         let sel = type == "phone" ? phoneSelection : appSelection
-        if let encoded = try? JSONEncoder().encode(sel) {
+        
+        // Unified to use PropertyListEncoder for SecureToken compatibility
+        if let encoded = try? PropertyListEncoder().encode(sel) {
             sharedDefaults.set(encoded, forKey: key)
+        }
+        
+        // Only update combined counts for 'app' selection type (used for remote management range)
+        if type == "app" {
+            let appCount = sel.applicationTokens.count
+            let categoryCount = sel.categoryTokens.count
+            let hasSelection = (appCount + categoryCount) > 0
+            
+            sharedDefaults.set(hasSelection, forKey: "hasSelection")
+            sharedDefaults.set(appCount, forKey: "selectedAppCount")
+            sharedDefaults.set(categoryCount, forKey: "selectedCategoryCount")
         }
     }
     
     func startLock(duration: Double = 0, lockType: String = "FULL", name: String = "바로 잠금", preventRemoval: Bool = false) {
+        self.lockSource = "MANUAL" // Default to Manual, can be overridden by applyLock
         // Normalize type
         let normalizedType = lockType.uppercased() == "APP" ? "APP" : "FULL"
         self.currentType = normalizedType
@@ -202,29 +275,9 @@ class LockModel: ObservableObject {
         sharedDefaults.set(name, forKey: "currentLockName")
         sharedDefaults.set(startTime, forKey: "lockStartTime")
         sharedDefaults.set(normalizedType, forKey: "lockType")
+        sharedDefaults.set(self.lockSource, forKey: lockSourceKey)
         
-        let sel = normalizedType == "APP" ? appSelection : phoneSelection
-        
-        if normalizedType == "FULL" {
-            // FULL Mode: Shield all applications but respect individual specific categories if selected
-            // However, ManagedSettings doesn't have a simple "Shield Everything Except" mode.
-            // The policy says: "허용 앱 외 전부 Shield = Full Lock"
-            // So we use .all but allow specific tokens to be excluded if possible?
-            // Actually, ShieldSettings.ActivityCategoryPolicy.all shields all.
-            // For a true "Whitelist" we'd need to set all but then exclude? 
-            // ManagedSettingsShield doesn't easily support "Shield All Except X".
-            // Alternative: Add allCategories to shield and then we'd need a shield extension to allow through.
-            // But for now, we follow the user's policy: "Shield all apps/categories"
-            // store.shield.applications does not support .all. Rely on categories to block everything.
-            store.shield.applications = nil 
-            store.shield.applicationCategories = .all()
-        } else {
-            // APP Mode: Specific categories and apps from selection
-            store.shield.applications = sel.applicationTokens
-            store.shield.applicationCategories = ShieldSettings.ActivityCategoryPolicy.specific(sel.categoryTokens)
-        }
-        
-        store.shield.webDomainCategories = ShieldSettings.ActivityCategoryPolicy.specific(sel.categoryTokens)
+        applyShieldSettings(lockType: normalizedType)
         
         // Apply app removal prevention whenever locked
         if #available(iOS 16.0, *) {
@@ -251,7 +304,7 @@ class LockModel: ObservableObject {
         
         store.shield.applications = nil
         store.shield.applicationCategories = nil
-        store.shield.webDomainCategories = nil
+        store.shield.webDomains = nil
         store.clearAllSettings()
         
         // Restore persistent "prevent app removal" setting if it was on

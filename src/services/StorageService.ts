@@ -247,5 +247,23 @@ export const StorageService = {
         } catch (e) {
             console.error('Failed to save user profile', e);
         }
+    },
+
+    // Personal Presets
+    async getPersonalPresets(): Promise<any[]> {
+        try {
+            const val = await AsyncStorage.getItem('@lockmoment_personal_presets');
+            return val ? JSON.parse(val) : [];
+        } catch (e) {
+            return [];
+        }
+    },
+
+    async savePersonalPresets(presets: any[]): Promise<void> {
+        try {
+            await AsyncStorage.setItem('@lockmoment_personal_presets', JSON.stringify(presets));
+        } catch (e) {
+            console.error('Failed to save personal presets', e);
+        }
     }
 };

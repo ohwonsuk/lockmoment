@@ -23,6 +23,7 @@ export interface LockControlInterface {
     getInstalledApps(): Promise<{ label: string, packageName: string, icon?: string }[]>;
     presentFamilyActivityPicker(lockType?: LockType): Promise<boolean | number>;
     getSelectedAppCount(): Promise<number>;
+    getSelectedCategoryCount(): Promise<number>;
     scheduleAlarm(
         scheduleId: string,
         startTime: string,
@@ -35,6 +36,11 @@ export interface LockControlInterface {
         preLockMinutes?: number
     ): Promise<boolean>;
     cancelAlarm(scheduleId: string): Promise<boolean>;
+    /**
+     * 현재 실행 중인 모든 예약 스케줄을 찾아서 중단하고 정책을 삭제합니다.
+     * @returns 중지된 스케줄 ID 배열
+     */
+    stopActiveSchedules(): Promise<string[]>;
     restoreLockState(): Promise<boolean>;
     openDefaultDialer(): Promise<boolean>;
     openDefaultMessages(): Promise<boolean>;
@@ -57,8 +63,10 @@ const defaultLockControl: LockControlInterface = {
     getInstalledApps: async () => [],
     presentFamilyActivityPicker: async () => false,
     getSelectedAppCount: async () => 0,
+    getSelectedCategoryCount: async () => 0,
     scheduleAlarm: async () => false,
     cancelAlarm: async () => false,
+    stopActiveSchedules: async () => [],
     restoreLockState: async () => false,
     openDefaultDialer: async () => false,
     openDefaultMessages: async () => false,

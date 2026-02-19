@@ -10,6 +10,7 @@ export interface ChildInfo {
     lockEndsAt?: string; // 잠금 종료 시간
     lastSeenAt?: string;
     hasPermission?: boolean; // 권한 동의 여부
+    hasAppSelection?: boolean; // 앱 선택 범위 설정 여부 (iOS)
 }
 
 export interface ParentChildRelation {
@@ -203,16 +204,25 @@ export const ParentChildService = {
     },
 
     /**
-     * Fetch daily usage stats (Mocked for now)
+     * Fetch daily usage stats
      */
-    async getChildUsageStats(childId: string): Promise<{ totalUsage: number; limit: number }> {
-        // TODO: Implement real API call
-        // return apiService.get(...)
+    async getChildUsageStats(childId: string): Promise<{ totalUsage: number, limit: number }> {
+        try {
+            const res: any = await apiService.get(`/parent-child/${childId}/usage-stats`);
+            return res.stats;
+        } catch (error) {
+            console.error('[ParentChildService] Failed to get usage stats:', error);
+            return { totalUsage: 0, limit: 120 };
+        }
+    },
 
-        // Mock data
-        return {
-            totalUsage: 135, // 2h 15m
-            limit: 180      // 3h
-        };
-    }
+    async getChildUsageReport(childId: string): Promise<any[]> {
+        try {
+            const res: any = await apiService.get(`/reports/usage/${childId}`);
+            return res.report;
+        } catch (error) {
+            console.error('[ParentChildService] Failed to get usage report:', error);
+            return [];
+        }
+    },
 };

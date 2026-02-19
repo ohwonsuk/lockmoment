@@ -589,6 +589,18 @@ export const handler = async (event) => {
                 });
             }
 
+            // device_id(UUID) 찾기 (클라이언트는 device_uuid를 보냄)
+            let dbDeviceId = null;
+            if (device_id) {
+                const deviceRes = await client.query(
+                    `SELECT id FROM devices WHERE device_uuid = $1`,
+                    [device_id]
+                );
+                if (deviceRes.rows.length > 0) {
+                    dbDeviceId = deviceRes.rows[0].id;
+                }
+            }
+
             const endsAt = new Date(Date.now() + duration_minutes * 60 * 1000);
 
             // 기존 활성 잠금이 있다면 종료 처리
@@ -608,7 +620,7 @@ export const handler = async (event) => {
                 RETURNING *`,
                 [
                     user.userId,
-                    device_id || null,
+                    dbDeviceId, // DB의 device.id 사용
                     lock_name,
                     lock_type,
                     endsAt,
@@ -629,28 +641,172 @@ export const handler = async (event) => {
             });
         }
 
-        // POST /locks/stop - 잠금 종료 (active_locks에서 삭제)
+        // POST /locks/stop - 잠금 종료 (active_locks에서 삭제 및 history 기록)
         if (httpMethod === 'POST' && path === '/locks/stop') {
             const user = await requireAuth(event);
 
-            const result = await client.query(
-                `DELETE FROM active_locks 
-                 WHERE user_id = $1 AND ends_at > NOW()
-                 RETURNING *`,
+            // 1. 현재 활성 잠금 정보들 가져오기 (모두)
+            const activeResult = await client.query(
+                `SELECT * FROM active_locks 
+                 WHERE user_id = $1 AND (ends_at > NOW() OR ends_at IS NULL)`,
                 [user.userId]
             );
 
-            if (result.rows.length === 0) {
+            if (activeResult.rows.length === 0) {
                 return response(404, {
                     success: false,
                     message: '활성화된 잠금이 없습니다'
                 });
             }
 
+            const endedAt = new Date();
+
+            // 2. 각 잠금을 History에 저장하고 삭제
+            for (const lock of activeResult.rows) {
+                const startTime = new Date(lock.created_at);
+                const durationMs = endedAt - startTime;
+                const durationMinutes = Math.max(1, Math.round(durationMs / 1000 / 60));
+
+                await client.query(
+                    `INSERT INTO lock_history (
+                        user_id, device_id, lock_name, lock_type, 
+                        started_at, ended_at, duration_minutes,
+                        lock_policy_id, preset_id, source, initiated_by
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+                    [
+                        lock.user_id,
+                        lock.device_id,
+                        lock.lock_name,
+                        lock.lock_type,
+                        startTime,
+                        endedAt,
+                        durationMinutes,
+                        lock.lock_policy_id,
+                        lock.preset_id,
+                        lock.source,
+                        lock.initiated_by
+                    ]
+                );
+            }
+
+            // 3. active_locks에서 해당 사용자의 모든 활성 잠금 삭제
+            await client.query(
+                `DELETE FROM active_locks WHERE user_id = $1 AND (ends_at > NOW() OR ends_at IS NULL)`,
+                [user.userId]
+            );
+
             return response(200, {
                 success: true,
-                message: '잠금이 종료되었습니다',
-                lock: result.rows[0]
+                message: '모든 잠금이 종료되고 기록되었습니다'
+            });
+        }
+
+        // GET /parent-child/{childId}/usage-stats - 오늘의 사용량 통계
+        if (httpMethod === 'GET' && path.startsWith('/parent-child/') && path.endsWith('/usage-stats')) {
+            const user = await requireAuth(event);
+            const childId = path.split('/')[2];
+
+            // 1. 오늘 완료된 잠금 시간 합산 (KST 기준 오늘의 시작부터)
+            const todayStart = new Date();
+            todayStart.setHours(0, 0, 0, 0);
+
+            const historyResult = await client.query(
+                `SELECT COALESCE(SUM(duration_minutes), 0) as total_minutes
+                 FROM lock_history
+                 WHERE user_id = $1 AND started_at >= $2`,
+                [childId, todayStart]
+            );
+
+            let totalUsage = parseInt(historyResult.rows[0].total_minutes);
+
+            // 2. 현재 진행 중인 잠금이 있다면 경과 시간 추가
+            const activeResult = await client.query(
+                `SELECT created_at FROM active_locks 
+                 WHERE user_id = $1 AND (ends_at > NOW() OR ends_at IS NULL)
+                 LIMIT 1`,
+                [childId]
+            );
+
+            if (activeResult.rows.length > 0) {
+                const startTime = new Date(activeResult.rows[0].created_at);
+                const currentMs = new Date() - startTime;
+                totalUsage += Math.floor(currentMs / 1000 / 60);
+            }
+
+            // 3. 오늘의 총 스케줄 제한 시간 계산 (단위: 분)
+            // 요일 체크 (KST 기준)
+            const daysKST = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+            const todayDay = daysKST[new Date().getDay()];
+
+            const scheduleResult = await client.query(
+                `SELECT start_time, end_time 
+                 FROM child_schedules
+                 WHERE child_user_id = $1 AND is_active = true 
+                 AND days @> $2::jsonb`,
+                [childId, JSON.stringify([todayDay])]
+            );
+
+            let totalLimit = 0;
+            scheduleResult.rows.forEach(s => {
+                const [sH, sM] = s.start_time.split(':').map(Number);
+                const [eH, eM] = s.end_time.split(':').map(Number);
+
+                let startMins = sH * 60 + sM;
+                let endMins = eH * 60 + eM;
+
+                if (endMins < startMins) {
+                    // Overnight support (이 부분은 정교화가 필요하지만 일단 단순 합산)
+                    totalLimit += (1440 - startMins) + endMins;
+                } else {
+                    totalLimit += (endMins - startMins);
+                }
+            });
+
+            return response(200, {
+                success: true,
+                stats: {
+                    totalUsage,
+                    limit: totalLimit || 120 // 스케줄 없으면 기본 2시간 (예시)
+                }
+            });
+        }
+
+        // GET /reports/usage/{childId} - 주간 사용 리포트 데이터
+        if (httpMethod === 'GET' && path.startsWith('/reports/usage/')) {
+            const user = await requireAuth(event);
+            const childId = path.split('/')[3];
+
+            // 최근 7일간의 일별 통계
+            const result = await client.query(
+                `SELECT 
+                    TO_CHAR(started_at, 'YYYY-MM-DD') as date,
+                    COALESCE(SUM(duration_minutes), 0) as total_minutes
+                 FROM lock_history
+                 WHERE user_id = $1 AND started_at >= NOW() - INTERVAL '7 days'
+                 GROUP BY TO_CHAR(started_at, 'YYYY-MM-DD')
+                 ORDER BY date ASC`,
+                [childId]
+            );
+
+            // 지난 7일 날짜 배열 생성 (빈 날짜 채우기용)
+            const last7Days = [];
+            for (let i = 6; i >= 0; i--) {
+                const date = new Date();
+                date.setDate(date.getDate() - i);
+                last7Days.push(date.toISOString().split('T')[0]);
+            }
+
+            const data = last7Days.map(date => {
+                const dayData = result.rows.find(r => r.date === date);
+                return {
+                    date,
+                    minutes: dayData ? parseInt(dayData.total_minutes) : 0
+                };
+            });
+
+            return response(200, {
+                success: true,
+                report: data
             });
         }
 
@@ -676,6 +832,84 @@ export const handler = async (event) => {
         // ========================================
         // Preset 엔드포인트 (모두 JWT 필요)
         // ========================================
+
+
+        // GET /personal-presets - 개인 Preset 목록 조회
+        if (httpMethod === 'GET' && path === '/personal-presets') {
+            const user = await requireAuth(event);
+            const result = await client.query(
+                'SELECT * FROM personal_presets WHERE user_id = $1 ORDER BY created_at DESC',
+                [user.userId]
+            );
+            return response(200, {
+                success: true,
+                presets: result.rows
+            });
+        }
+
+        // POST /personal-presets - 개인 Preset 생성/수정
+        if (httpMethod === 'POST' && path === '/personal-presets') {
+            const user = await requireAuth(event);
+            const {
+                id, name, description, lock_type, preset_type,
+                allowed_apps, blocked_apps,
+                allowed_categories, blocked_categories,
+                duration_minutes, start_time, end_time, days
+            } = data;
+
+            if (id) {
+                // Update
+                const result = await client.query(
+                    `UPDATE personal_presets SET
+                        name = $1, description = $2, lock_type = $3,
+                        allowed_apps = $4, blocked_apps = $5,
+                        allowed_categories = $6, blocked_categories = $7,
+                        duration_minutes = $8, start_time = $9, end_time = $10,
+                        days = $11, preset_type = $12, updated_at = NOW()
+                    WHERE id = $13 AND user_id = $14
+                    RETURNING *`,
+                    [
+                        name, description, lock_type || 'FULL',
+                        JSON.stringify(allowed_apps || []), JSON.stringify(blocked_apps || []),
+                        JSON.stringify(allowed_categories || []), JSON.stringify(blocked_categories || []),
+                        duration_minutes, start_time, end_time,
+                        JSON.stringify(days || []), preset_type || 'INSTANT',
+                        id, user.userId
+                    ]
+                );
+                return response(200, { success: true, preset: result.rows[0] });
+            } else {
+                // Create
+                const presetId = getUUID();
+                const result = await client.query(
+                    `INSERT INTO personal_presets (
+                        id, user_id, name, description, lock_type, preset_type,
+                        allowed_apps, blocked_apps, allowed_categories, blocked_categories,
+                        duration_minutes, start_time, end_time, days,
+                        created_at, updated_at
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
+                    RETURNING *`,
+                    [
+                        presetId, user.userId, name, description, lock_type || 'FULL', preset_type || 'INSTANT',
+                        JSON.stringify(allowed_apps || []), JSON.stringify(blocked_apps || []),
+                        JSON.stringify(allowed_categories || []), JSON.stringify(blocked_categories || []),
+                        duration_minutes, start_time, end_time, JSON.stringify(days || [])
+                    ]
+                );
+                return response(201, { success: true, preset: result.rows[0] });
+            }
+        }
+
+        // DELETE /personal-presets/{id} - 개인 Preset 삭제
+        if (httpMethod === 'DELETE' && path.startsWith('/personal-presets/')) {
+            const user = await requireAuth(event);
+            const presetId = path.split('/').pop();
+            await client.query(
+                'DELETE FROM personal_presets WHERE id = $1 AND user_id = $2',
+                [presetId, user.userId]
+            );
+            return response(200, { success: true, message: '삭제되었습니다' });
+        }
 
         // GET /presets - Preset 목록 조회
         if (httpMethod === 'GET' && path === '/presets') {

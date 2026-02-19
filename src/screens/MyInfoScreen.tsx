@@ -70,8 +70,14 @@ export const MyInfoScreen: React.FC = () => {
             }
         ] : []),
         { icon: 'settings-outline', label: '앱 설정', onPress: () => navigate('Settings') },
+        {
+            icon: 'options-outline',
+            label: '개인 프리셋 관리',
+            onPress: () => navigate('PersonalPreset' as any)
+        },
         { icon: 'notifications-outline', label: '알림 설정', onPress: () => navigate('NotificationSettings') },
         { icon: 'shield-checkmark-outline', label: '권한 관리', onPress: () => navigate('Permissions') },
+        { icon: 'lock-closed-outline', label: '앱 잠금 설정', onPress: () => navigate('AppLockSettings') },
         { icon: 'help-circle-outline', label: '도움말 / FAQ', onPress: () => { } },
         { icon: 'mail-outline', label: '문의하기', onPress: () => { } },
     ];

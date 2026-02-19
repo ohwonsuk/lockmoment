@@ -111,10 +111,14 @@ export const LockService = {
             const profile = await StorageService.getUserProfile();
             const deviceId = await DeviceInfo.getUniqueId();
 
+            let apiLockType: string = params.lockType;
+            if (apiLockType === 'APP') apiLockType = 'APP_ONLY';
+            if (apiLockType === 'PHONE') apiLockType = 'FULL';
+
             await apiService.post('/locks/start', {
                 device_id: deviceId,
                 lock_name: params.lockName,
-                lock_type: params.lockType,
+                lock_type: apiLockType,
                 duration_minutes: params.durationMinutes,
                 source: params.source || 'MANUAL',
                 blocked_apps: params.lockedApps || [],

@@ -35,12 +35,34 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
             // FULL 모드: 전체 앱 차단 (시스템 앱 제외)
             store.shield.applications = nil
             store.shield.applicationCategories = .all()
-        } else if let selectionData = policy["selection"] as? Data {
-            // APP 모드: 선택된 앱/카테고리만 차단
-            // FamilyActivitySelection 등 네이티브 타입은 PropertyListDecoder가 권장됨
-            if let selection = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: selectionData) {
-                store.shield.applications = selection.applicationTokens
-                store.shield.applicationCategories = .specific(selection.categoryTokens)
+        } else {
+            // APP 모드: 선택된 앱/카테고리 차단
+            var selection: FamilyActivitySelection? = nil
+            
+            // 1. 항상 현재 글로벌 설정("SelectedApps_app")을 우선 사용 (Live Update 지원)
+            // lockType이 "PHONE"인 경우는 위에서 FULL로 처리되므로 여기서는 "APP"만 고려하면 됨
+            let key = "SelectedApps_app"
+            
+            if let data = sharedDefaults.data(forKey: key) {
+                if let decoded = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: data) {
+                    selection = decoded
+                } else if let decoded = try? JSONDecoder().decode(FamilyActivitySelection.self, from: data) {
+                    // Fallback for old JSON format
+                    selection = decoded
+                }
+            }
+            
+            // 2. 글로벌 설정이 비어있다면, 정책에 저장된 스냅샷 확인 (Fallback)
+            if selection == nil || (selection?.applicationTokens.isEmpty == true && selection?.categoryTokens.isEmpty == true) {
+                 if let selectionData = policy["selection"] as? Data {
+                    selection = try? PropertyListDecoder().decode(FamilyActivitySelection.self, from: selectionData)
+                }
+            }
+            
+            if let sel = selection {
+                store.shield.applications = sel.applicationTokens
+                store.shield.applicationCategories = .specific(sel.categoryTokens)
+                store.shield.webDomains = sel.webDomainTokens
             }
         }
         
@@ -59,16 +81,17 @@ class DeviceActivityMonitorExtension: DeviceActivityMonitor {
         super.intervalDidEnd(for: activity)
         
         let store = ManagedSettingsStore(named: .lockMoment)
-        store.clearAllSettings()
         
-        // 앱 삭제 방지 설정이 글로벌하게 켜져 있다면 복구
-        let globalPrevent = sharedDefaults.bool(forKey: "preventAppRemovalSetting")
-        if #available(iOS 16.0, *) {
-            store.application.denyAppRemoval = globalPrevent
-        }
-        
-        // Only set isLocked = false if no other schedules are active
+        // ONLY clear if no other schedule is active at this point
         if !isAnyScheduleActive() {
+            store.clearAllSettings()
+            
+            // 앱 삭제 방지 설정이 글로벌하게 켜져 있다면 복구
+            let globalPrevent = sharedDefaults.bool(forKey: "preventAppRemovalSetting")
+            if #available(iOS 16.0, *) {
+                store.application.denyAppRemoval = globalPrevent
+            }
+            
             sharedDefaults.set(false, forKey: "isLocked")
             sharedDefaults.removeObject(forKey: "currentLockName")
         }
