@@ -219,7 +219,7 @@ export const PersonalPresetScreen: React.FC = () => {
                 ListEmptyComponent={() => (
                     <View style={styles.emptyContainer}>
                         <Icon name="options-outline" size={48} color={Colors.border} />
-                        <Typography color={Colors.textSecondary} style={{ marginTop: 12 }}>등록된 사전등록이 없습니다.</Typography>
+                        <Typography color={Colors.textSecondary} style={{ marginTop: 12 }}>저장된 사전등록이 없습니다.</Typography>
                     </View>
                 )}
             />

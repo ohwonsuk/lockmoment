@@ -11,6 +11,7 @@ export interface ChildInfo {
     lastSeenAt?: string;
     hasPermission?: boolean; // 권한 동의 여부
     hasAppSelection?: boolean; // 앱 선택 범위 설정 여부 (iOS)
+    restrictMyInfo?: boolean; // 내 정보 접근 제한 여부 (부모 설정)
 }
 
 export interface ParentChildRelation {
@@ -225,4 +226,11 @@ export const ParentChildService = {
             return [];
         }
     },
+
+    /**
+     * 자녀 접근 제한 설정 (부모 전용)
+     */
+    async updateChildRestriction(childId: string, restrict: boolean): Promise<ApiResponse> {
+        return apiService.patch<ApiResponse>('/users/restriction', { childId, restrict });
+    }
 };

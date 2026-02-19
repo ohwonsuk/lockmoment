@@ -33,6 +33,7 @@ import { ScheduleEditScreen } from '../screens/ScheduleEditScreen';
 import { UsageReportScreen } from '../screens/UsageReportScreen';
 import { PersonalPresetScreen } from '../screens/PersonalPresetScreen';
 import { AppLockSettingsScreen } from '../screens/AppLockSettingsScreen';
+import { PinSettingsScreen } from '../screens/PinSettingsScreen';
 
 export const AppNavigator: React.FC = () => {
     const { currentScreen, currentParams } = useAppNavigation();
@@ -99,6 +100,8 @@ export const AppNavigator: React.FC = () => {
                 return <PersonalPresetScreen />;
             case 'AppLockSettings':
                 return <AppLockSettingsScreen />;
+            case 'PinSettings':
+                return <PinSettingsScreen />;
 
             default:
                 return <DashboardScreen />;

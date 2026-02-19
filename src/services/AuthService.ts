@@ -416,4 +416,32 @@ export class AuthService {
     static async getUserProfile(): Promise<UserInfo | any> {
         return await StorageService.getUserProfile();
     }
+
+    // PIN and Restriction (260219 추가)
+    /**
+     * PIN 설정/변경
+     */
+    static async setPin(pin: string): Promise<boolean> {
+        try {
+            await apiService.post('/auth/pin/set', { pin });
+            await StorageService.setHasPin(true);
+            return true;
+        } catch (error) {
+            console.error("[AuthService] Set PIN failed:", error);
+            return false;
+        }
+    }
+
+    /**
+     * PIN 검증
+     */
+    static async verifyPin(pin: string): Promise<boolean> {
+        try {
+            await apiService.post('/auth/pin/verify', { pin });
+            return true;
+        } catch (error) {
+            console.error("[AuthService] Verify PIN failed:", error);
+            return false;
+        }
+    }
 }

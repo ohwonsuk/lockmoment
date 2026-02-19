@@ -159,6 +159,65 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
 
 ---
 
+## 🔒 PIN 보안 및 접근 제한 (New)
+
+### 3-1. PIN 설정/변경
+`POST /auth/pin/set`
+
+**Request**:
+```json
+{
+  "pin": "123456"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "PIN이 설정되었습니다."
+}
+```
+
+### 3-2. PIN 검증
+`POST /auth/pin/verify`
+
+**Request**:
+```json
+{
+  "pin": "123456"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "PIN 검증 성공"
+}
+```
+
+### 3-3. 자녀 접근 제한 설정 (부모 전용)
+`PATCH /users/restriction`
+
+**Request**:
+```json
+{
+  "childId": "uuid",
+  "restrict": true
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "message": "자녀의 내 정보 접근이 제한되었습니다."
+}
+```
+
+---
+
 ## 📋 Preset 정책 API
 
 ### 4. Preset 목록 조회

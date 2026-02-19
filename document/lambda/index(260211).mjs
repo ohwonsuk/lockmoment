@@ -486,6 +486,75 @@ export const handler = async (event) => {
         }
 
         // ========================================
+        // PIN 보안 및 접근 제한 (260219 추가)
+        // ========================================
+
+        // POST /auth/pin/set - PIN 설정/변경
+        if (httpMethod === 'POST' && path === '/auth/pin/set') {
+            const user = await requireAuth(event);
+            const { pin } = data;
+
+            if (!pin || !/^\d{6}$/.test(pin)) {
+                return response(400, { success: false, message: 'PIN은 숫자 6자리여야 합니다.' });
+            }
+
+            await client.query(
+                `UPDATE users SET pin_code = $1, updated_at = NOW() WHERE id = $2`,
+                [pin, user.userId]
+            );
+
+            return response(200, { success: true, message: 'PIN이 설정되었습니다.' });
+        }
+
+        // POST /auth/pin/verify - PIN 검증
+        if (httpMethod === 'POST' && path === '/auth/pin/verify') {
+            const user = await requireAuth(event);
+            const { pin } = data;
+
+            const result = await client.query(
+                `SELECT pin_code FROM users WHERE id = $1`,
+                [user.userId]
+            );
+
+            const dbPin = result.rows[0]?.pin_code;
+            if (dbPin === pin) {
+                return response(200, { success: true, message: 'PIN 검증 성공' });
+            } else {
+                return response(401, { success: false, message: 'PIN이 일치하지 않습니다.' });
+            }
+        }
+
+        // PATCH /users/restriction - 자녀 접근 제한 설정 (부모 전용)
+        if (httpMethod === 'PATCH' && path === '/users/restriction') {
+            const user = await requireAuth(event);
+            const { childId, restrict } = data;
+
+            if (!childId) {
+                return response(400, { success: false, message: 'childId가 필요합니다.' });
+            }
+
+            // 부모-자녀 관계 확인
+            const authCheck = await client.query(
+                'SELECT 1 FROM parent_child_relations WHERE parent_user_id = $1 AND child_user_id = $2',
+                [user.userId, childId]
+            );
+
+            if (authCheck.rows.length === 0) {
+                return response(403, { success: false, message: '해당 자녀에 대한 관리 권한이 없습니다.' });
+            }
+
+            await client.query(
+                `UPDATE users SET restrict_my_info = $1, updated_at = NOW() WHERE id = $2`,
+                [!!restrict, childId]
+            );
+
+            return response(200, {
+                success: true,
+                message: restrict ? '자녀의 내 정보 접근이 제한되었습니다.' : '자녀의 내 정보 접근 제한이 해제되었습니다.'
+            });
+        }
+
+        // ========================================
         // 디바이스 엔드포인트
         // ========================================
 

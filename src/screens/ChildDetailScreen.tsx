@@ -151,7 +151,7 @@ export const ChildDetailScreen: React.FC = () => {
                     </View>
                 )}
 
-                {/* Device Change Notice / Action */}
+                {/* Relink Notice */}
                 <View style={styles.relinkNotice}>
                     <Icon name="information-circle-outline" size={20} color={Colors.primary} />
                     <Typography style={styles.relinkText}>
@@ -164,6 +164,36 @@ export const ChildDetailScreen: React.FC = () => {
                     >
                         <Typography bold color={Colors.primary} style={{ fontSize: 13 }}>연결 QR 생성</Typography>
                     </TouchableOpacity>
+                </View>
+
+                {/* Access Restriction Toggle (260219 추가) */}
+                <View style={styles.restrictionCard}>
+                    <View style={styles.restrictionHeader}>
+                        <View style={[styles.actionIcon, { backgroundColor: '#F43F5E15', marginBottom: 0 }]}>
+                            <Icon name="shield-outline" size={24} color="#F43F5E" />
+                        </View>
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Typography bold>자녀 화면 접근 제한</Typography>
+                            <Typography variant="caption" color={Colors.textSecondary}>자녀 기기에서 '내 정보' 화면 접근을 제한합니다.</Typography>
+                        </View>
+                        <TouchableOpacity
+                            onPress={async () => {
+                                const newValue = !child.restrictMyInfo;
+                                const result = await ParentChildService.updateChildRestriction(child.id, newValue);
+                                if (result.success) {
+                                    setChild({ ...child, restrictMyInfo: newValue });
+                                } else {
+                                    Alert.alert("오류", result.message || "설정 변경에 실패했습니다.");
+                                }
+                            }}
+                        >
+                            <Icon
+                                name={child.restrictMyInfo ? "toggle" : "toggle-outline"}
+                                size={40}
+                                color={child.restrictMyInfo ? "#F43F5E" : Colors.textSecondary}
+                            />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {/* Quick Actions */}
@@ -467,5 +497,17 @@ const styles = StyleSheet.create({
         fontSize: 10,
         color: Colors.primary,
         fontWeight: '700',
+    },
+    restrictionCard: {
+        backgroundColor: Colors.card,
+        borderRadius: 20,
+        padding: 16,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    restrictionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
 });

@@ -265,5 +265,40 @@ export const StorageService = {
         } catch (e) {
             console.error('Failed to save personal presets', e);
         }
+    },
+
+    // PIN and Restriction (260219 추가)
+    async getHasPin(): Promise<boolean> {
+        try {
+            const val = await AsyncStorage.getItem('@lockmoment_has_pin');
+            return val === 'true';
+        } catch (e) {
+            return false;
+        }
+    },
+
+    async setHasPin(hasPin: boolean): Promise<void> {
+        try {
+            await AsyncStorage.setItem('@lockmoment_has_pin', hasPin ? 'true' : 'false');
+        } catch (e) {
+            console.error('Failed to save hasPin flag', e);
+        }
+    },
+
+    async isMyInfoRestricted(): Promise<boolean> {
+        try {
+            const val = await AsyncStorage.getItem('@lockmoment_myinfo_restricted');
+            return val === 'true';
+        } catch (e) {
+            return false;
+        }
+    },
+
+    async setMyInfoRestricted(restricted: boolean): Promise<void> {
+        try {
+            await AsyncStorage.setItem('@lockmoment_myinfo_restricted', restricted ? 'true' : 'false');
+        } catch (e) {
+            console.error('Failed to save restriction flag', e);
+        }
     }
 };

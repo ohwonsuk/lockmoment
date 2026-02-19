@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, TouchableOpacity, ScrollView, Switch, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ScrollView, Platform, Linking } from 'react-native';
 import { Typography } from '../components/Typography';
 import { Colors } from '../theme/Colors';
 import { Header } from '../components/Header';
 import { useAppNavigation } from '../navigation/NavigationContext';
-import { StorageService } from '../services/StorageService';
-import { NativeLockControl } from '../services/NativeLockControl';
+import { AuthService } from '../services/AuthService';
+import DeviceInfo from 'react-native-device-info';
 
 import { Icon } from '../components/Icon';
 import { useAlert } from '../context/AlertContext';
@@ -23,36 +23,49 @@ const MenuItem: React.FC<{ title: string; icon: string; onPress: () => void; rig
 export const SettingsScreen: React.FC = () => {
     const { navigate } = useAppNavigation();
     const { showAlert } = useAlert();
-    const [preventAppRemoval, setPreventAppRemoval] = useState(false);
+    const [deviceData, setDeviceData] = useState<any>(null);
 
     useEffect(() => {
-        loadSettings();
+        loadData();
     }, []);
 
-    const loadSettings = async () => {
-        const val = await StorageService.getPreventAppRemoval();
-        setPreventAppRemoval(val);
+    const loadData = async () => {
+        const data = await AuthService.getDeviceData();
+        setDeviceData({
+            ...data,
+            appVersion: DeviceInfo.getVersion(),
+        });
     };
 
-    const handleToggleRemoval = async (value: boolean) => {
-        if (value && Platform.OS === 'android') {
-            const isActive = await NativeLockControl.checkDeviceAdminActive();
-            if (!isActive) {
+    const handleContactUs = async () => {
+        const subject = encodeURIComponent('[LockMoment] 문의하기');
+        const body = encodeURIComponent(
+            `\n\n--- 기기 정보 ---\n모델: ${deviceData?.model}\nOS: ${deviceData?.osVersion}\n앱 버전: ${deviceData?.appVersion}\n플랫폼: ${deviceData?.platform}`
+        );
+        const mailUrl = `mailto:lockmomentapp@gmail.com?subject=${subject}&body=${body}`;
+
+        try {
+            const supported = await Linking.canOpenURL(mailUrl);
+            if (supported) {
+                await Linking.openURL(mailUrl);
+            } else {
                 showAlert({
-                    title: "권한 필요",
-                    message: "앱 삭제 방지 기능을 사용하려면 기기 관리자 권한 활성화가 필요합니다.",
-                    confirmText: "설정으로 이동",
-                    cancelText: "취소",
-                    onConfirm: () => NativeLockControl.requestDeviceAdmin(),
-                    onCancel: () => setPreventAppRemoval(false)
+                    title: "문의하기 실패",
+                    message: "메일 앱을 열 수 없습니다. lockmomentapp@gmail.com으로 문의해주세요.",
+                    confirmText: "확인"
                 });
-                // We don't set it true yet, user must go to settings
-                return;
             }
+        } catch (error) {
+            console.error("Failed to open mail client", error);
         }
-        setPreventAppRemoval(value);
-        await StorageService.setPreventAppRemoval(value);
-        await NativeLockControl.setPreventAppRemoval(value);
+    };
+
+    const showDeviceInfo = () => {
+        showAlert({
+            title: "기기 정보",
+            message: `기기 모델: ${deviceData?.model}\nOS 버전: ${deviceData?.osVersion}\n앱 버전: ${deviceData?.appVersion}\n기기 ID: ${deviceData?.deviceId}`,
+            confirmText: "확인"
+        });
     };
 
     return (
@@ -72,19 +85,6 @@ export const SettingsScreen: React.FC = () => {
                         icon="time"
                         onPress={() => navigate('History')}
                     />
-                    <MenuItem
-                        title="앱 삭제 방지"
-                        icon="trash"
-                        onPress={() => { }}
-                        rightElement={
-                            <Switch
-                                value={preventAppRemoval}
-                                onValueChange={handleToggleRemoval}
-                                trackColor={{ false: '#334155', true: Colors.primary }}
-                                thumbColor={Platform.OS === 'android' ? '#fff' : undefined}
-                            />
-                        }
-                    />
                 </View>
 
                 <View style={styles.section}>
@@ -93,6 +93,16 @@ export const SettingsScreen: React.FC = () => {
                         icon="notifications"
                         onPress={() => navigate('NotificationSettings')}
                     />
+                    <MenuItem
+                        title="내 기기 정보"
+                        icon="phone-portrait"
+                        onPress={showDeviceInfo}
+                    />
+                    <MenuItem
+                        title="문의하기"
+                        icon="mail"
+                        onPress={handleContactUs}
+                    />
                     <MenuItem title="도움말" icon="help-circle" onPress={() => { }} />
                     <MenuItem
                         title="버전 정보"
@@ -100,7 +110,7 @@ export const SettingsScreen: React.FC = () => {
                         onPress={() => { }}
                         rightElement={
                             <Typography variant="body" color={Colors.textSecondary}>
-                                v{require('../../package.json').version}
+                                v{deviceData?.appVersion || '1.0.0'}
                             </Typography>
                         }
                     />

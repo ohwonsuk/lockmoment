@@ -62,7 +62,7 @@ export const AppLockSettingsScreen: React.FC = () => {
                 }
             } else {
                 // Android: Maybe show app list or just alert for now
-                Alert.alert("알림", "안드로이드는 현재 모든 앱을 차단 범위로 설정할 수 있습니다.");
+                Alert.alert("알림", "안드로이드는 현재 모든 앱을 잠금 범위로 설정할 수 있습니다.");
             }
         } catch (error: any) {
             console.error('[AppLockSettings] Picker error:', error);
@@ -103,7 +103,7 @@ export const AppLockSettingsScreen: React.FC = () => {
             // But we can add a confirmation here.
             setTimeout(() => {
                 setIsSaving(false);
-                Alert.alert("저장 완료", "차단 허용 범위가 저장되었습니다. 이제 예약 잠금을 설정할 수 있습니다.", [
+                Alert.alert("저장 완료", "잠금 대상 앱/카테고리가 저장되었습니다. 이제 잠금을 설정할 수 있습니다.", [
                     { text: "확인", onPress: () => navigate('MyInfo') }
                 ]);
             }, 500);
@@ -120,17 +120,17 @@ export const AppLockSettingsScreen: React.FC = () => {
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <View style={styles.headerTextSection}>
                     <Typography variant="h2" bold style={{ marginBottom: 8 }}>
-                        예약 잠금을 설정할 수 있도록
+                        잠금기능을 사용하기 위해
                     </Typography>
                     <Typography variant="h2" bold color={Colors.primary}>
-                        차단 가능한 앱/카테고리를 선택해주세요
+                        잠금 대상 앱/카테고리를 선택해주세요
                     </Typography>
                 </View>
 
                 {/* Info Card */}
                 <View style={styles.infoCard}>
                     <Typography variant="body" color={Colors.textSecondary} style={{ lineHeight: 22 }}>
-                        iOS 정책에 따라, 보호자가 원격으로 앱을 차단하기 위해서는 사용자가 {Platform.OS === 'ios' ? '아래 버튼을 눌러 나오는 시스템 화면에서' : ''} 미리 차단 가능한 앱의 목록을 선택하고 동의해야 합니다.
+                        iOS 정책에 따라, 앱에서 잠금기능을 사용하기 위해서는 사용자가 {Platform.OS === 'ios' ? '아래 버튼을 눌러 나오는 시스템 화면에서' : ''} 미리 차단 가능한 앱의 목록을 선택하고 동의해야 합니다.
                     </Typography>
                     <Typography variant="caption" color={Colors.primary} style={{ marginTop: 12, fontWeight: 'bold' }}>
                         * 이 과정에서 실제로 앱이 잠기지는 않습니다.
@@ -146,11 +146,11 @@ export const AppLockSettingsScreen: React.FC = () => {
                     />
                     <View style={{ flex: 1, marginLeft: 12 }}>
                         <Typography bold color={hasSelection ? '#10B981' : '#F59E0B'}>
-                            {hasSelection ? '차단 대상 설정 완료' : '차단 대상이 설정되지 않았어요'}
+                            {hasSelection ? '잠금 대상 설정 완료' : '잠금 대상이 설정되지 않았어요'}
                         </Typography>
                         <Typography variant="caption" color={hasSelection ? '#10B981' : '#F59E0B'}>
                             {hasSelection
-                                ? '예약잠금을 이 범위 내에서 설정할 수 있어요'
+                                ? '잠금을 이 범위 내에서 설정할 수 있어요'
                                 : '선택하지 않으면 예약 잠금을 설정할 수 없어요'}
                         </Typography>
                     </View>
@@ -170,7 +170,7 @@ export const AppLockSettingsScreen: React.FC = () => {
                     <View style={styles.stepItem}>
                         <View style={styles.stepNumber}><Typography bold color="#FFF">2</Typography></View>
                         <Typography style={{ flex: 1, marginLeft: 12 }}>
-                            상단의 '카테고리' 또는 개별 '앱' 탭에서 차단하고 싶은 항목들을 체크합니다.
+                            상단의 '카테고리' 또는 개별 '앱' 탭에서 잠그고 싶은 항목들을 체크합니다.
                         </Typography>
                     </View>
 
@@ -184,7 +184,7 @@ export const AppLockSettingsScreen: React.FC = () => {
                     <TouchableOpacity style={styles.mainActionBtn} onPress={handleSelectApps}>
                         <Icon name="apps" size={24} color="#FFF" />
                         <Typography bold color="#FFF" style={{ marginLeft: 10, fontSize: 18 }}>
-                            {hasSelection ? '차단 대상 변경하기' : '차단 대상 선택하기'}
+                            {hasSelection ? '잠금 대상 변경하기' : '잠금 대상 선택하기'}
                         </Typography>
                     </TouchableOpacity>
                 </View>
@@ -213,7 +213,7 @@ export const AppLockSettingsScreen: React.FC = () => {
                 <View style={styles.bottomNotice}>
                     <Icon name="information-circle-outline" size={18} color={Colors.textSecondary} />
                     <Typography variant="caption" color={Colors.textSecondary} style={{ marginLeft: 6, flex: 1 }}>
-                        iOS에서는 시스템 보안 상 실제 선택은 애플에서 제공하는 설정 화면에서 직접 완료해야 합니다.
+                        iOS에서는 시스템 보안상 실제 선택은 애플에서 제공하는 설정 화면에서 직접 완료해야 합니다.
                     </Typography>
                 </View>
             </ScrollView>
