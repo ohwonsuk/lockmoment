@@ -34,8 +34,8 @@ export const Header: React.FC<Props> = ({
     };
 
     const handleContextChange = () => {
-        // 컨텍스트 변경 시 대시보드로 이동하거나 화면 리프레시 유도
-        navigate('Dashboard');
+        // 컨텍스트 변경 시 대시보드 리프레시 유도
+        navigate('Dashboard', { refresh: Date.now() });
     };
 
     // Shield icon color: green if permission granted, red if denied, default gray if unknown

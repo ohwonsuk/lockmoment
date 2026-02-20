@@ -1,4 +1,5 @@
 import { apiService, ApiResponse } from './ApiService';
+import { AuthService } from './AuthService';
 
 export interface ChildInfo {
     id: string;
@@ -12,6 +13,9 @@ export interface ChildInfo {
     hasPermission?: boolean; // 권한 동의 여부
     hasAppSelection?: boolean; // 앱 선택 범위 설정 여부 (iOS)
     restrictMyInfo?: boolean; // 내 정보 접근 제한 여부 (부모 설정)
+    birthYear?: number; // 출생연도 (260220 추가)
+    phone?: string; // 핸드폰번호 (260220 추가)
+    hasPin?: boolean; // PIN 설정 여부 (260221 추가)
 }
 
 export interface ParentChildRelation {
@@ -60,9 +64,14 @@ export const ParentChildService = {
     /**
      * Generate a registration QR payload
      */
-    async generateRegistrationQr(type: 'CHILD' | 'PARENT', name: string): Promise<string> {
+    async generateRegistrationQr(type: 'CHILD' | 'PARENT', name: string, birthYear?: number, phone?: string): Promise<string> {
         try {
-            const response = await apiService.post<ApiResponse<{ payload: string }>>('/parent-child/registration-qr', { type, name });
+            const response = await apiService.post<ApiResponse<{ payload: string }>>('/parent-child/registration-qr', {
+                type,
+                name,
+                birthYear,
+                phone
+            });
             return response.data.payload;
         } catch (error) {
             // Mock for demo
@@ -70,6 +79,8 @@ export const ParentChildService = {
                 type: type === 'CHILD' ? 'CHILD_REGISTRATION' : 'PARENT_LINK',
                 issuerId: 'current-user-id',
                 name,
+                birthYear,
+                phone,
                 timestamp: Date.now()
             });
         }
@@ -79,7 +90,11 @@ export const ParentChildService = {
      * Link a child using the registration payload scanned from QR
      */
     async linkChild(registrationPayload: string): Promise<ApiResponse> {
-        return apiService.post<ApiResponse>('/parent-child/link', { payload: registrationPayload });
+        const deviceData = await AuthService.getDeviceData();
+        return apiService.post<ApiResponse>('/parent-child/link', {
+            payload: registrationPayload,
+            deviceId: deviceData.deviceId
+        });
     },
 
     /**
@@ -203,9 +218,9 @@ export const ParentChildService = {
     async getChildUsageStats(childId: string): Promise<{ totalUsage: number, limit: number }> {
         try {
             const res: any = await apiService.get(`/parent-child/${childId}/usage-stats`);
-            return res.stats;
+            return res.success && res.stats ? res.stats : { totalUsage: 0, limit: 120 };
         } catch (error) {
-            console.error('[ParentChildService] Failed to get usage stats:', error);
+            console.warn('[ParentChildService] Usage stats not found or error, using default:', error);
             return { totalUsage: 0, limit: 120 };
         }
     },
@@ -225,5 +240,12 @@ export const ParentChildService = {
      */
     async updateChildRestriction(childId: string, restrict: boolean): Promise<ApiResponse> {
         return apiService.patch<ApiResponse>('/users/restriction', { childId, restrict });
+    },
+
+    /**
+     * 자녀 PIN 초기화 (부모 전용)
+     */
+    async resetChildPin(childId: string): Promise<ApiResponse> {
+        return apiService.post<ApiResponse>('/users/reset-pin', { childId });
     }
 };

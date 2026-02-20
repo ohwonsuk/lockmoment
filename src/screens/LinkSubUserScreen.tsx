@@ -19,6 +19,8 @@ export const LinkSubUserScreen: React.FC<any> = ({ route }) => {
 
     // Registration state
     const [name, setName] = useState('');
+    const [birthYear, setBirthYear] = useState(''); // 260220 추가
+    const [phoneSuffix, setPhoneSuffix] = useState(''); // 260220 추가 (010 제외 8자리)
     const [regType, setRegType] = useState<'CHILD' | 'PARENT'>('CHILD');
     const [qrValue, setQrValue] = useState<string | null>(null);
     const [isRegModalVisible, setIsRegModalVisible] = useState(false);
@@ -51,6 +53,8 @@ export const LinkSubUserScreen: React.FC<any> = ({ route }) => {
     const handleOpenAdd = (type: 'CHILD' | 'PARENT', initialName?: string) => {
         setRegType(type);
         setName(initialName || '');
+        setBirthYear('');
+        setPhoneSuffix('');
         setIsRegModalVisible(true);
     };
 
@@ -58,7 +62,13 @@ export const LinkSubUserScreen: React.FC<any> = ({ route }) => {
         if (!name.trim()) return;
         setIsGenerating(true);
         try {
-            const payload = await ParentChildService.generateRegistrationQr(regType, name);
+            const finalPhone = phoneSuffix.trim() ? `010${phoneSuffix.trim()}` : undefined;
+            const payload = await ParentChildService.generateRegistrationQr(
+                regType,
+                name,
+                birthYear ? parseInt(birthYear) : undefined,
+                finalPhone
+            );
             setQrValue(payload);
             setIsRegModalVisible(false);
             setIsQRModalVisible(true);
@@ -180,7 +190,7 @@ export const LinkSubUserScreen: React.FC<any> = ({ route }) => {
                                 <Icon name="close" size={24} />
                             </TouchableOpacity>
                         </View>
-                        <View style={styles.modalBody}>
+                        <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false} bounces={false}>
                             <Typography variant="caption" color={Colors.textSecondary} style={{ marginBottom: 8 }}>
                                 {regType === 'CHILD' ? '자녀의 이름을 입력하세요' : '공동 관리할 보호자의 이름을 입력하세요'}
                             </Typography>
@@ -192,7 +202,45 @@ export const LinkSubUserScreen: React.FC<any> = ({ route }) => {
                                 placeholderTextColor={Colors.textSecondary}
                                 autoFocus
                             />
-                        </View>
+
+                            {regType === 'CHILD' && (
+                                <View style={{ marginTop: 20 }}>
+                                    <View style={{ marginBottom: 16 }}>
+                                        <Typography variant="caption" color={Colors.textSecondary} style={{ marginBottom: 8 }}>
+                                            출생연도 (선택)
+                                        </Typography>
+                                        <TextInput
+                                            style={styles.input}
+                                            value={birthYear}
+                                            onChangeText={(v) => { if (v.length <= 4) setBirthYear(v.replace(/[^0-9]/g, '')); }}
+                                            placeholder="예: 2015"
+                                            placeholderTextColor={Colors.textSecondary}
+                                            keyboardType="numeric"
+                                            maxLength={4}
+                                        />
+                                    </View>
+                                    <View style={{ marginBottom: 20 }}>
+                                        <Typography variant="caption" color={Colors.textSecondary} style={{ marginBottom: 8 }}>
+                                            핸드폰번호 (선택)
+                                        </Typography>
+                                        <View style={styles.phoneInputContainer}>
+                                            <View style={styles.phonePrefix}>
+                                                <Typography>010</Typography>
+                                            </View>
+                                            <TextInput
+                                                style={[styles.input, { flex: 1, borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeftWidth: 0 }]}
+                                                value={phoneSuffix}
+                                                onChangeText={(v) => { if (v.length <= 8) setPhoneSuffix(v.replace(/[^0-9]/g, '')); }}
+                                                placeholder="나머지 8자리 숫자"
+                                                placeholderTextColor={Colors.textSecondary}
+                                                keyboardType="numeric"
+                                                maxLength={8}
+                                            />
+                                        </View>
+                                    </View>
+                                </View>
+                            )}
+                        </ScrollView>
                         <TouchableOpacity
                             style={[styles.linkButton, !name.trim() && styles.disabledButton]}
                             disabled={!name.trim() || isGenerating}
@@ -254,10 +302,12 @@ const styles = StyleSheet.create({
     emptyText: { textAlign: 'center', marginTop: 10, fontStyle: 'italic' },
     guideContainer: { marginTop: 20, padding: 16, backgroundColor: Colors.card, borderRadius: 12 },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-    modalContent: { backgroundColor: Colors.background, borderRadius: 24, width: '100%', maxWidth: 400, padding: 24 },
+    modalContent: { backgroundColor: Colors.background, borderRadius: 24, width: '100%', maxWidth: 400, padding: 24, maxHeight: '90%' },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-    modalBody: { marginBottom: 24 },
-    input: { backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, borderRadius: 12, padding: 16, fontSize: 16, color: Colors.text },
+    modalBody: { maxHeight: 400, marginBottom: 24 },
+    input: { backgroundColor: Colors.card, borderWidth: 1, borderColor: Colors.border, borderRadius: 12, padding: 16, fontSize: 16, color: Colors.text, minHeight: 56 },
+    phoneInputContainer: { flexDirection: 'row', alignItems: 'stretch' },
+    phonePrefix: { backgroundColor: Colors.border, paddingHorizontal: 16, borderTopLeftRadius: 12, borderBottomLeftRadius: 12, borderWidth: 1, borderColor: Colors.border, justifyContent: 'center', minWidth: 60 },
     linkButton: { backgroundColor: Colors.primary, paddingVertical: 16, borderRadius: 12, alignItems: 'center' },
     disabledButton: { backgroundColor: Colors.statusInactive },
 });

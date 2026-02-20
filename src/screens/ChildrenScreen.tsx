@@ -57,6 +57,9 @@ export const ChildrenScreen: React.FC = () => {
             <View style={styles.childInfo}>
                 <View style={styles.nameRow}>
                     <Typography bold style={styles.childName}>{child.childName || '연결된 자녀'}</Typography>
+                    {child.birthYear && (
+                        <Typography variant="caption" color={Colors.textSecondary} style={{ marginRight: 8 }}>({child.birthYear}년생)</Typography>
+                    )}
                     {child.status === 'LOCKED' && (
                         <View style={styles.lockedBadge}>
                             <Icon name="lock-closed" size={10} color="white" />
@@ -80,6 +83,10 @@ export const ChildrenScreen: React.FC = () => {
                 contentContainerStyle={styles.content}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={Colors.primary} />}
             >
+                <Typography variant="h2" bold style={styles.heading}>
+                    {userRole === 'TEACHER' ? '관리 중인 학생' : '관리 중인 자녀'}
+                </Typography>
+
                 {children.length > 0 ? (
                     <View style={styles.list}>
                         {children.map(renderChildItem)}
@@ -122,6 +129,10 @@ const styles = StyleSheet.create({
     list: {
         gap: 12,
         marginBottom: 24,
+    },
+    heading: {
+        marginBottom: 16,
+        color: Colors.text,
     },
     childCard: {
         flexDirection: 'row',

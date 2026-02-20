@@ -84,6 +84,16 @@ export const PersonalQRGeneratorScreen: React.FC = () => {
     const [isTimePickerVisible, setIsTimePickerVisible] = useState(false);
     const [pickerTarget, setPickerTarget] = useState<'start' | 'end'>('start');
     const cardRef = useRef<any>(null);
+    const [tempHour, setTempHour] = useState('');
+    const [tempMin, setTempMin] = useState('');
+
+    useEffect(() => {
+        if (isTimePickerVisible) {
+            const cur = pickerTarget === 'start' ? startTime : endTime;
+            setTempHour((cur.getHours() % 12 || 12).toString());
+            setTempMin(cur.getMinutes().toString().padStart(2, '0'));
+        }
+    }, [isTimePickerVisible, pickerTarget]);
 
     // ── 이력 팝업 상태 ──────────────────────────────────────
     const [isHistoryVisible, setIsHistoryVisible] = useState(false);
@@ -392,11 +402,13 @@ export const PersonalQRGeneratorScreen: React.FC = () => {
 
     // ── 시간 피커 헬퍼 ────────────────────────────────────────
     const handleHourChange = (val: string, isStart: boolean) => {
+        setTempHour(val);
         const setTime = isStart ? setStartTime : setEndTime;
         const current = isStart ? startTime : endTime;
         const isPM = current.getHours() >= 12;
         let h = parseInt(val);
-        if (isNaN(h)) h = 12;
+        if (isNaN(h)) return;
+        if (h > 12) h = 12;
         if (h === 12) h = 0;
         const newDate = new Date(current);
         newDate.setHours(isPM ? h + 12 : h);
@@ -404,10 +416,12 @@ export const PersonalQRGeneratorScreen: React.FC = () => {
     };
 
     const handleMinuteChange = (val: string, isStart: boolean) => {
+        setTempMin(val);
         const setTime = isStart ? setStartTime : setEndTime;
         const current = isStart ? startTime : endTime;
         let m = parseInt(val);
-        if (isNaN(m)) m = 0;
+        if (isNaN(m)) return;
+        if (m >= 60) m = 59;
         const newDate = new Date(current);
         newDate.setMinutes(m);
         setTime(newDate);
@@ -441,6 +455,10 @@ export const PersonalQRGeneratorScreen: React.FC = () => {
             }
         }
         setTime(newDate);
+        setTimeout(() => {
+            setTempHour((newDate.getHours() % 12 || 12).toString());
+            setTempMin(newDate.getMinutes().toString().padStart(2, '0'));
+        }, 0);
     };
 
     const qrSubtitle = qrType === 'INSTANT'
@@ -758,7 +776,7 @@ export const PersonalQRGeneratorScreen: React.FC = () => {
                                 <TextInput
                                     style={[styles.textInput, styles.timeInputModal]}
                                     keyboardType="numeric"
-                                    value={((pickerTarget === 'start' ? startTime : endTime).getHours() % 12 || 12).toString()}
+                                    value={tempHour}
                                     onChangeText={(v) => handleHourChange(v, pickerTarget === 'start')}
                                     maxLength={2}
                                 />
@@ -770,7 +788,7 @@ export const PersonalQRGeneratorScreen: React.FC = () => {
                                 <TextInput
                                     style={[styles.textInput, styles.timeInputModal]}
                                     keyboardType="numeric"
-                                    value={(pickerTarget === 'start' ? startTime : endTime).getMinutes().toString().padStart(2, '0')}
+                                    value={tempMin}
                                     onChangeText={(v) => handleMinuteChange(v, pickerTarget === 'start')}
                                     maxLength={2}
                                 />

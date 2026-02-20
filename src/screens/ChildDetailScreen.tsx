@@ -58,6 +58,24 @@ export const ChildDetailScreen: React.FC = () => {
         navigate('QRGenerator', { childId: childId });
     };
 
+    const handleResetPin = () => {
+        showAlert({
+            title: "PIN 초기화",
+            message: "자녀 기기의 접근 제한 PIN을 초기화하시겠습니까?",
+            cancelText: "취소",
+            confirmText: "초기화",
+            onConfirm: async () => {
+                const result = await ParentChildService.resetChildPin(childId);
+                if (result.success) {
+                    showAlert({ title: "성공", message: "PIN이 초기화되었습니다." });
+                    loadChildDetails();
+                } else {
+                    showAlert({ title: "오류", message: result.message || "PIN 초기화에 실패했습니다." });
+                }
+            }
+        });
+    };
+
     const handleToggleSchedule = async (scheduleId: string, currentStatus: boolean) => {
         try {
             // Optimistic update
@@ -121,7 +139,12 @@ export const ChildDetailScreen: React.FC = () => {
                             <Icon name={child.status === 'LOCKED' ? "lock-closed" : "lock-open"} size={24} color="white" />
                         </View>
                         <View style={styles.statusText}>
-                            <Typography bold color={Colors.primary} style={{ marginBottom: 2 }}>{child.childName || '자녀'}</Typography>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                                <Typography bold color={Colors.primary}>{child.childName || '자녀'}</Typography>
+                                {child.birthYear && (
+                                    <Typography variant="caption" color={Colors.textSecondary}>({child.birthYear}년생)</Typography>
+                                )}
+                            </View>
                             <Typography variant="h2" bold>{child.status === 'LOCKED' ? '잠금 활성화' : '잠금 해제됨'}</Typography>
                             <Typography variant="caption" color={Colors.textSecondary}>
                                 {child.status === 'LOCKED' ? '현재 집중 모드가 켜져있습니다.' : '자유롭게 기기를 사용 중입니다.'}
@@ -166,14 +189,21 @@ export const ChildDetailScreen: React.FC = () => {
                     </TouchableOpacity>
                 </View>
 
-                {/* Access Restriction Toggle (260219 추가) */}
+                {/* Access Restriction Toggle */}
                 <View style={styles.restrictionCard}>
                     <View style={styles.restrictionHeader}>
                         <View style={[styles.actionIcon, { backgroundColor: '#F43F5E15', marginBottom: 0 }]}>
                             <Icon name="shield-outline" size={24} color="#F43F5E" />
                         </View>
                         <View style={{ flex: 1, marginLeft: 12 }}>
-                            <Typography bold>자녀 화면 접근 제한</Typography>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Typography bold>자녀 화면 접근 제한</Typography>
+                                {child.hasPin && (
+                                    <View style={styles.pinBadge}>
+                                        <Typography style={styles.pinBadgeText}>PIN 설정됨</Typography>
+                                    </View>
+                                )}
+                            </View>
                             <Typography variant="caption" color={Colors.textSecondary}>자녀 기기에서 '내 정보' 화면 접근을 제한합니다.</Typography>
                         </View>
                         <TouchableOpacity
@@ -194,6 +224,18 @@ export const ChildDetailScreen: React.FC = () => {
                             />
                         </TouchableOpacity>
                     </View>
+
+                    {child.hasPin && (
+                        <View style={styles.pinResetRow}>
+                            <Icon name="key-outline" size={16} color={Colors.textSecondary} />
+                            <Typography variant="caption" color={Colors.textSecondary} style={{ flex: 1 }}>
+                                비밀번호가 설정되어 보호되고 있습니다.
+                            </Typography>
+                            <TouchableOpacity style={styles.resetPinBtn} onPress={handleResetPin}>
+                                <Typography bold color={Colors.primary} style={{ fontSize: 12 }}>PIN 초기화</Typography>
+                            </TouchableOpacity>
+                        </View>
+                    )}
                 </View>
 
                 {/* Quick Actions */}
@@ -254,9 +296,6 @@ export const ChildDetailScreen: React.FC = () => {
 
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 16 }}>
                             <Typography variant="h2" bold>예약된 잠금</Typography>
-                            <TouchableOpacity onPress={() => navigate('ScheduleEdit', { childId: child.id, mode: 'CREATE' })}>
-                                <Icon name="add-circle" size={24} color={Colors.primary} />
-                            </TouchableOpacity>
                         </View>
 
                         {schedules.length === 0 ? (
@@ -510,4 +549,34 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
     },
+    pinBadge: {
+        backgroundColor: Colors.statusGreen + '15',
+        paddingHorizontal: 6,
+        paddingVertical: 1,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: Colors.statusGreen + '30',
+    },
+    pinBadgeText: {
+        fontSize: 9,
+        color: Colors.statusGreen,
+        fontWeight: 'bold',
+    },
+    pinResetRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 12,
+        paddingTop: 12,
+        borderTopWidth: 1,
+        borderTopColor: Colors.border,
+        gap: 8,
+    },
+    resetPinBtn: {
+        backgroundColor: Colors.primary + '10',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: Colors.primary + '30',
+    }
 });

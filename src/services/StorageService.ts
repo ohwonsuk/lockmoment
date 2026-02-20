@@ -24,6 +24,19 @@ export interface HistoryItem {
 
 const SCHEDULES_KEY = '@lockmoment_schedules';
 const HISTORY_KEY = '@lockmoment_history';
+const PARENT_QR_HISTORY_KEY = '@lockmoment_parent_qr_history';
+
+export interface ParentLockHistory {
+    id: string;
+    date: number;
+    name: string;
+    duration: number;
+    lockMethod: 'FULL' | 'CATEGORY' | 'APP';
+    selectedApps: string[];
+    selectedCategories: string[];
+    qrType: 'INSTANT' | 'SCHEDULED';
+    platform: 'IOS' | 'ANDROID' | 'UNKNOWN';
+}
 
 export const StorageService = {
     async getItem(key: string): Promise<string | null> {
@@ -319,7 +332,7 @@ export const StorageService = {
     },
 
     // 🔄 Context Management (260220 신규)
-    async getActiveContext(): Promise<{ type: 'SELF' | 'CHILD' | 'STUDENT'; id?: string } | null> {
+    async getActiveContext(): Promise<{ type: 'SELF' | 'CHILD' | 'STUDENT' | 'PARENT' | 'TEACHER' | 'ORG_ADMIN' | 'ORG_STAFF'; id?: string } | null> {
         try {
             const val = await AsyncStorage.getItem('@lockmoment_active_context');
             return val ? JSON.parse(val) : { type: 'SELF' };
@@ -328,11 +341,37 @@ export const StorageService = {
         }
     },
 
-    async setActiveContext(context: { type: 'SELF' | 'CHILD' | 'STUDENT'; id?: string }): Promise<void> {
+    async setActiveContext(context: { type: 'SELF' | 'CHILD' | 'STUDENT' | 'PARENT' | 'TEACHER' | 'ORG_ADMIN' | 'ORG_STAFF'; id?: string }): Promise<void> {
         try {
             await AsyncStorage.setItem('@lockmoment_active_context', JSON.stringify(context));
         } catch (e) {
             console.error('Failed to save active context', e);
+        }
+    },
+
+    async getParentQRHistory(): Promise<ParentLockHistory[]> {
+        try {
+            const val = await this.getItem(PARENT_QR_HISTORY_KEY);
+            return val ? JSON.parse(val) : [];
+        } catch (e) {
+            return [];
+        }
+    },
+
+    async saveParentQRHistory(item: Omit<ParentLockHistory, 'id' | 'date'>): Promise<void> {
+        try {
+            const history = await this.getParentQRHistory();
+            const newItem: ParentLockHistory = {
+                ...item,
+                id: `hist_${Date.now()}`,
+                date: Date.now()
+            };
+
+            // Limit to 50 items
+            const updated = [newItem, ...history].slice(0, 50);
+            await this.setItem(PARENT_QR_HISTORY_KEY, JSON.stringify(updated));
+        } catch (e) {
+            console.error('Failed to save parent QR history', e);
         }
     }
 };

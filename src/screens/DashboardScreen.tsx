@@ -21,7 +21,7 @@ import { FamilyLockList } from '../components/FamilyLockList';
 import { LockService } from '../services/LockService';
 
 export const DashboardScreen: React.FC = () => {
-    const { navigate, currentScreen } = useAppNavigation();
+    const { navigate, currentScreen, currentParams } = useAppNavigation();
     const { showAlert } = useAlert();
     const [isLocked, setIsLocked] = useState(false);
     const [remainingTime, setRemainingTime] = useState<number>(0);
@@ -30,21 +30,30 @@ export const DashboardScreen: React.FC = () => {
     const [isPickerVisible, setIsPickerVisible] = useState(false);
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [children, setChildren] = useState<ChildInfo[]>([]);
-    const [userRole, setUserRole] = useState<string>('STUDENT');
+    const [userRole, setUserRole] = useState<string>('USER');
+    const [contextType, setContextType] = useState<'SELF' | 'PARENT' | 'TEACHER' | 'CHILD' | 'STUDENT' | 'ORG_ADMIN' | 'ORG_STAFF'>('SELF');
     const [viewMode, setViewMode] = useState<'PERSONAL' | 'ADMIN'>('PERSONAL');
     const [recommendedPresets, setRecommendedPresets] = useState<Preset[]>([]);
     const [isApplyingPreset, setIsApplyingPreset] = useState(false);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     useEffect(() => {
-        loadUserRole();
+        const init = async () => {
+            await loadUserRole();
+            refreshAll();
+        };
+        init();
     }, []);
 
     useEffect(() => {
         if (currentScreen === 'Dashboard') {
-            refreshAll();
+            const sync = async () => {
+                await loadUserRole(); // Ensure context is updated
+                refreshAll();
+            };
+            sync();
         }
-    }, [currentScreen]);
+    }, [currentScreen, currentParams?.refresh]);
 
     useEffect(() => {
         refreshAll();
@@ -57,19 +66,17 @@ export const DashboardScreen: React.FC = () => {
 
     const loadUserRole = async () => {
         const role = await StorageService.getUserRole();
-        if (role) {
-            setUserRole(role);
-            // If parent/teacher, they might want to see Admin by default or after switching
-            if (role === 'PARENT' || role === 'TEACHER') {
-                // setViewMode('ADMIN'); // Optional: decide default
-            }
-        }
+        if (role) setUserRole(role);
+
+        const context = await StorageService.getActiveContext();
+        if (context) setContextType(context.type as any);
+
         checkTabletMode(role);
     };
 
     const checkTabletMode = (role: string | null) => {
         const isTablet = DeviceInfo.isTablet();
-        if (isTablet && (role === 'TEACHER' || role === 'ADMIN')) {
+        if (isTablet && (role === 'TEACHER' || role === 'ORG_ADMIN')) {
             showAlert({
                 title: "태블릿 감지됨",
                 message: "출석 관리 키오스크 모드로 전환하시겠습니까?",
@@ -124,13 +131,21 @@ export const DashboardScreen: React.FC = () => {
 
     const refreshAll = () => {
         checkPermission();
-        syncAndLoadSchedules();
         updateStatus();
-        if (userRole === 'PARENT' || userRole === 'TEACHER') {
+
+        const adminContexts = ['PARENT', 'TEACHER', 'ORG_ADMIN', 'ORG_STAFF'];
+        const userContexts = ['SELF', 'CHILD', 'STUDENT'];
+
+        if (adminContexts.includes(contextType)) {
             loadChildren();
             loadPresets();
-        } else if (Platform.OS === 'ios') {
-            checkAppLockSelection();
+        }
+
+        if (userContexts.includes(contextType)) {
+            syncAndLoadSchedules();
+            if (Platform.OS === 'ios') {
+                checkAppLockSelection();
+            }
         }
     };
 
@@ -353,87 +368,109 @@ export const DashboardScreen: React.FC = () => {
     }
 
 
-    const renderUnifiedDashboard = () => (
-        <ScrollView
-            style={styles.flex1}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-        >
-            {/* 1. Personal Lock Section (Always Visible) */}
-            <View style={styles.sectionHeader}>
-                <Typography variant="h2" bold>내 잠금</Typography>
-            </View>
+    const renderUnifiedDashboard = () => {
+        const isAdmin = ['PARENT', 'TEACHER', 'ORG_ADMIN', 'ORG_STAFF'].includes(contextType);
+        const isUser = ['SELF', 'CHILD', 'STUDENT'].includes(contextType);
 
-            {isLocked ? (
-                <View style={styles.activeLockCard}>
-                    <View style={styles.activeLockHeader}>
-                        <View style={styles.statusBadge}>
-                            <View style={styles.statusDot} />
-                            <Typography variant="caption" bold color={Colors.primary}>집중 모드 동작 중</Typography>
+        return (
+            <ScrollView
+                style={styles.flex1}
+                contentContainerStyle={styles.scrollContent}
+                showsVerticalScrollIndicator={false}
+            >
+                {/* 1. Admin/Management Section */}
+                {isAdmin && (
+                    <>
+                        <View style={styles.sectionHeader}>
+                            <Typography variant="h2" bold>
+                                {contextType === 'PARENT' ? '자녀 관리' : '학생 관리'}
+                            </Typography>
                         </View>
-                        <TouchableOpacity onPress={handleStopLock}>
-                            <Typography variant="caption" color={Colors.textSecondary}>종료</Typography>
-                        </TouchableOpacity>
-                    </View>
-                    <Typography style={styles.remainingTimeText}>{formatTime(remainingTime)}</Typography>
-                    {endTimeDate && (
-                        <Typography variant="caption" color={Colors.textSecondary} style={{ marginTop: -10, marginBottom: 30 }}>
-                            종료예정 {endTimeDate.getHours()}:{endTimeDate.getMinutes().toString().padStart(2, '0')}
-                        </Typography>
-                    )}
-                </View>
-            ) : (
-                <View style={styles.mainActions}>
-                    <TouchableOpacity style={[styles.mainActionButton, { backgroundColor: Colors.primary }]} onPress={handleQuickLock}>
-                        <Icon name="lock-closed" size={32} color="#FFF" />
-                        <Typography variant="h2" bold color="#FFF" style={{ marginTop: 12 }}>바로 잠금</Typography>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.mainActionButton, { backgroundColor: Colors.card }]} onPress={() => navigate('QRGenerator', { type: 'SCHEDULED', isPersonal: true })}>
-                        <View style={[styles.iconBadge, { backgroundColor: '#EC489915' }]}>
-                            <Icon name="calendar" size={28} color="#EC4899" />
-                        </View>
-                        <Typography variant="h2" bold style={{ marginTop: 12 }}>예약 잠금</Typography>
-                    </TouchableOpacity>
-                </View>
-            )}
-
-            <View style={{ height: 24 }} />
-
-            {/* 2. Family Lock Section (Visible for Parents) */}
-            {(userRole === 'PARENT' && children.length > 0) && (
-                <FamilyLockList children={children} onManage={handleManageChild} />
-            )}
-
-            {/* 3. Legacy Schedule List (Optional) */}
-            <View style={styles.sectionHeader}>
-                <Typography variant="h2" bold>내 예약 스케줄</Typography>
-                {(userRole === 'PARENT' || userRole === 'TEACHER') && (
-                    <TouchableOpacity onPress={() => navigate('QRGenerator', { type: 'SCHEDULED', isPersonal: true })}>
-                        <Typography color={Colors.primary} bold>추가</Typography>
-                    </TouchableOpacity>
+                        {children.length > 0 ? (
+                            <FamilyLockList children={children} onManage={handleManageChild} />
+                        ) : (
+                            <View style={styles.emptyState}>
+                                <Typography variant="caption" color={Colors.textSecondary}>
+                                    연결된 {contextType === 'PARENT' ? '자녀' : '학생'}가 없습니다.
+                                </Typography>
+                            </View>
+                        )}
+                        <View style={{ height: 24 }} />
+                    </>
                 )}
-            </View>
-            <WeeklySchedule
-                schedules={schedules}
-                onPressItem={(id) => {
-                    const s = schedules.find(x => x.id === id);
-                    if (s) {
-                        navigate('QRGenerator', {
-                            type: 'SCHEDULED',
-                            title: s.name,
-                            apps: s.lockedApps,
-                            isPersonal: true,
-                            editPresetId: s.id  // ← 수정 모드로 진입
-                        });
-                    }
-                }}
-                onToggle={handleToggleSchedule}
-                onGenerateQR={handleGenerateScheduleQR}
-            />
 
-            <View style={styles.footer} />
-        </ScrollView>
-    );
+                {/* 2. Personal Lock Section */}
+                {isUser && (
+                    <>
+                        <View style={styles.sectionHeader}>
+                            <Typography variant="h2" bold>내 잠금</Typography>
+                        </View>
+
+                        {isLocked ? (
+                            <View style={styles.activeLockCard}>
+                                <View style={styles.activeLockHeader}>
+                                    <View style={styles.statusBadge}>
+                                        <View style={styles.statusDot} />
+                                        <Typography variant="caption" bold color={Colors.primary}>집중 모드 동작 중</Typography>
+                                    </View>
+                                    <TouchableOpacity onPress={handleStopLock}>
+                                        <Typography variant="caption" color={Colors.textSecondary}>종료</Typography>
+                                    </TouchableOpacity>
+                                </View>
+                                <Typography style={styles.remainingTimeText}>{formatTime(remainingTime)}</Typography>
+                                {endTimeDate && (
+                                    <Typography variant="caption" color={Colors.textSecondary} style={{ marginTop: -10, marginBottom: 30 }}>
+                                        종료예정 {endTimeDate.getHours()}:{endTimeDate.getMinutes().toString().padStart(2, '0')}
+                                    </Typography>
+                                )}
+                            </View>
+                        ) : (
+                            <View style={styles.mainActions}>
+                                <TouchableOpacity style={[styles.mainActionButton, { backgroundColor: Colors.primary }]} onPress={handleQuickLock}>
+                                    <Icon name="lock-closed" size={32} color="#FFF" />
+                                    <Typography variant="h2" bold color="#FFF" style={{ marginTop: 12 }}>바로 잠금</Typography>
+                                </TouchableOpacity>
+                                <TouchableOpacity style={[styles.mainActionButton, { backgroundColor: Colors.card }]} onPress={() => navigate('QRGenerator', { type: 'SCHEDULED', isPersonal: true })}>
+                                    <View style={[styles.iconBadge, { backgroundColor: '#EC489915' }]}>
+                                        <Icon name="calendar" size={28} color="#EC4899" />
+                                    </View>
+                                    <Typography variant="h2" bold style={{ marginTop: 12 }}>예약 잠금</Typography>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
+                        <View style={{ height: 24 }} />
+
+                        <View style={styles.sectionHeader}>
+                            <Typography variant="h2" bold>내 예약 스케줄</Typography>
+                            <TouchableOpacity onPress={() => navigate('QRGenerator', { type: 'SCHEDULED', isPersonal: true })}>
+                                <Typography color={Colors.primary} bold>추가</Typography>
+                            </TouchableOpacity>
+                        </View>
+                        <WeeklySchedule
+                            schedules={schedules}
+                            onPressItem={(id) => {
+                                const s = schedules.find(x => x.id === id);
+                                if (s) {
+                                    navigate('QRGenerator', {
+                                        type: 'SCHEDULED',
+                                        title: s.name,
+                                        apps: s.lockedApps,
+                                        isPersonal: true,
+                                        editPresetId: s.id
+                                    });
+                                }
+                            }}
+                            onToggle={handleToggleSchedule}
+                            onGenerateQR={handleGenerateScheduleQR}
+                        />
+                    </>
+                )}
+
+                <View style={styles.footer} />
+            </ScrollView>
+        );
+    };
 
     return (
         <View style={styles.container}>

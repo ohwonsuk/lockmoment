@@ -6,7 +6,7 @@ import { Icon } from './Icon';
 import { StorageService } from '../services/StorageService';
 
 export interface ContextItem {
-    type: 'SELF' | 'CHILD' | 'STUDENT';
+    type: 'SELF' | 'CHILD' | 'STUDENT' | 'PARENT' | 'TEACHER' | 'ORG_ADMIN' | 'ORG_STAFF';
     id?: string;
     name: string;
     subName?: string; // 예: "OO수학학원", "자녀"
@@ -28,25 +28,54 @@ export const ContextSwitcher: React.FC<ContextSwitcherProps> = ({ onContextChang
     const loadContexts = async () => {
         const active = await StorageService.getActiveContext();
         const profile = await StorageService.getUserProfile();
+        const userRole = await StorageService.getUserRole();
 
-        const list: ContextItem[] = [{ type: 'SELF', name: '나' }];
+        const list: ContextItem[] = [{
+            type: 'SELF',
+            name: '나',
+            subName: '사용자'
+        }];
 
-        if (profile?.relations) {
-            profile.relations.children?.forEach((c: any) => {
-                list.push({ type: 'CHILD', id: c.id, name: c.nickname || c.display_name, subName: '자녀' });
-            });
-            profile.relations.organizations?.forEach((o: any) => {
-                list.push({ type: 'STUDENT', id: o.id, name: o.name, subName: o.role === 'TEACHER' ? '학생 관리' : '기관' });
-            });
+        // 부모/자녀 관계가 있거나 PARENT 역할인 경우 '부모' 컨텍스트 추가
+        if (userRole === 'PARENT' || (profile?.relations?.children && profile.relations.children.length > 0)) {
+            list.push({ type: 'PARENT', name: '부모', subName: '가정 관리' });
+        }
+
+        // 교사 역할인 경우 '교사' 컨텍스트 추가
+        if (userRole === 'TEACHER' || profile?.relations?.organizations?.some((o: any) => o.role === 'TEACHER')) {
+            list.push({ type: 'TEACHER', name: '교사', subName: '수업 관리' });
+        }
+
+        // 기관 관리자/운영자
+        if (userRole === 'ORG_ADMIN') {
+            list.push({ type: 'ORG_ADMIN', name: '기관 총관리자', subName: '운영/정책' });
+        }
+        if (userRole === 'ORG_STAFF') {
+            list.push({ type: 'ORG_STAFF', name: '기관 운영자', subName: '운영' });
+        }
+
+        // 자녀/학생 본인인 경우
+        if (userRole === 'CHILD') {
+            list.push({ type: 'CHILD', name: '자녀', subName: '관리 대상' });
+        }
+        if (userRole === 'STUDENT') {
+            list.push({ type: 'STUDENT', name: '학생', subName: '관리 대상' });
         }
 
         setContexts(list);
 
         // 현재 선택된 컨텍스트 찾기
         if (active) {
-            const found = list.find(l => l.type === active.type && l.id === active.id);
-            if (found) setCurrentContext(found);
+            const found = list.find(l => l.type === active.type);
+            if (found) {
+                setCurrentContext(found);
+                return;
+            }
         }
+
+        // 기본값: '나'
+        setCurrentContext(list[0]);
+        await StorageService.setActiveContext({ type: 'SELF' });
     };
 
     const handleSelect = async (item: ContextItem) => {
@@ -60,13 +89,11 @@ export const ContextSwitcher: React.FC<ContextSwitcherProps> = ({ onContextChang
         <View>
             <TouchableOpacity style={styles.selector} onPress={() => setIsVisible(true)}>
                 <View style={styles.selectorLeft}>
-                    <Icon name={currentContext.type === 'SELF' ? 'person-circle-outline' : 'people-outline'} size={20} color={Colors.primary} />
-                    <Typography bold style={styles.currentName}>{currentContext.name}</Typography>
-                    {currentContext.subName && (
-                        <View style={styles.tag}>
-                            <Typography variant="caption" color="white">{currentContext.subName}</Typography>
-                        </View>
-                    )}
+                    <Icon name={currentContext.type === 'SELF' ? 'person-circle' : 'people'} size={22} color={Colors.primary} />
+                    <View style={styles.nameContainer}>
+                        <Typography bold style={styles.currentName}>{currentContext.name}</Typography>
+                        <Typography variant="caption" color={Colors.primary} style={styles.roleLabel}>{currentContext.subName}</Typography>
+                    </View>
                 </View>
                 <Icon name="chevron-down" size={16} color={Colors.textSecondary} />
             </TouchableOpacity>
@@ -118,15 +145,16 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
     },
-    currentName: {
-        marginLeft: 6,
+    nameContainer: {
+        marginLeft: 8,
         marginRight: 4,
     },
-    tag: {
-        backgroundColor: Colors.primary,
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 4,
+    currentName: {
+        fontSize: 14,
+    },
+    roleLabel: {
+        fontSize: 10,
+        marginTop: -2,
     },
     overlay: {
         flex: 1,

@@ -13,21 +13,38 @@ type TabItem = {
     icon: string;
 };
 
-const getTabs = (contextType: 'SELF' | 'CHILD' | 'STUDENT', userRole: string | null): TabItem[] => {
+type ContextType = 'SELF' | 'CHILD' | 'STUDENT' | 'PARENT' | 'TEACHER' | 'ORG_ADMIN' | 'ORG_STAFF';
+
+const getTabs = (contextType: ContextType, userRole: string | null): TabItem[] => {
     switch (contextType) {
-        case 'CHILD': // 부모 모드 (자녀 관리)
+        case 'PARENT': // 부모 모드 (자녀 관리)
             return [
                 { name: 'Dashboard', label: '잠금', icon: 'lock-closed' },
-                { name: 'LinkSubUser', label: '자녀', icon: 'people' },
+                { name: 'Children', label: '자녀', icon: 'people' },
                 { name: 'QR', label: 'QR', icon: 'qr-code' },
-                { name: 'UsageReport', label: '리포트', icon: 'bar-chart' },
+                { name: 'History', label: '리포트', icon: 'bar-chart' },
                 { name: 'MyInfo', label: '내 정보', icon: 'person' },
             ];
-        case 'STUDENT': // 선생님 모드 (학생 관리)
+        case 'TEACHER': // 선생님 모드 (학생 관리)
             return [
                 { name: 'TeacherClass', label: '학생 관리', icon: 'school' },
                 { name: 'AdminSchedule', label: '기관 스케쥴', icon: 'business' },
                 { name: 'QR', label: 'QR출석', icon: 'qr-code' },
+                { name: 'MyInfo', label: '내 정보', icon: 'person' },
+            ];
+        case 'ORG_ADMIN':
+        case 'ORG_STAFF':
+            return [
+                { name: 'OrgAdmin', label: '운영 관리', icon: 'business' },
+                { name: 'StudentManagement', label: '기관 학생', icon: 'people' },
+                { name: 'QR', label: 'QR출석', icon: 'qr-code' },
+                { name: 'MyInfo', label: '내 정보', icon: 'person' },
+            ];
+        case 'CHILD':
+        case 'STUDENT': // 관리 대상 모드 (자녀/학생)
+            return [
+                { name: 'Dashboard', label: '잠금 상태', icon: 'lock-closed' },
+                { name: 'Notification', label: '알림', icon: 'notifications' },
                 { name: 'MyInfo', label: '내 정보', icon: 'person' },
             ];
         default: // 나 모드 (SELF)
@@ -44,7 +61,7 @@ const getTabs = (contextType: 'SELF' | 'CHILD' | 'STUDENT', userRole: string | n
 export const BottomTabBar: React.FC = () => {
     const insets = useSafeAreaInsets();
     const { currentScreen, navigate } = useAppNavigation();
-    const [contextType, setContextType] = React.useState<'SELF' | 'CHILD' | 'STUDENT'>('SELF');
+    const [contextType, setContextType] = React.useState<ContextType>('SELF');
     const [userRole, setUserRole] = React.useState<string | null>(null);
 
     React.useEffect(() => {

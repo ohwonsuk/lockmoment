@@ -61,6 +61,27 @@ export const MyInfoScreen: React.FC = () => {
         const restricted = await StorageService.isMyInfoRestricted();
         setIsRestricted(restricted);
 
+        const context = await StorageService.getActiveContext();
+        if (context) {
+            setRole(context.type);
+        }
+
+        const currentRestricted = profile?.user?.restrict_my_info ?? profile?.restrict_my_info ??
+            profile?.user?.restrictMyInfo ?? profile?.restrictMyInfo ??
+            restricted;
+        setIsRestricted(!!currentRestricted);
+
+        // Check restriction
+        if (currentRestricted && (context?.type === 'CHILD' || context?.type === 'STUDENT' || context?.type === 'SELF')) {
+            showAlert({
+                title: "접근 제한",
+                message: "부모님의 설정에 의해 '내 정보' 화면 접근이 제한되었습니다.",
+                confirmText: "확인",
+                onConfirm: () => navigate('Dashboard')
+            });
+            return;
+        }
+
         const data = await AuthService.getDeviceData();
         setDeviceInfo({
             ...data,
@@ -192,20 +213,6 @@ export const MyInfoScreen: React.FC = () => {
         );
     };
 
-    if (isRestricted && (role === 'CHILD' || role === 'STUDENT')) {
-        return (
-            <View style={styles.container}>
-                <Header title="내 정보" />
-                <View style={styles.restrictedContainer}>
-                    <Icon name="lock-closed" size={80} color={Colors.textSecondary} />
-                    <Typography variant="h2" bold style={styles.restrictedTitle}>접근 권한이 제한되었습니다</Typography>
-                    <Typography color={Colors.textSecondary} style={styles.restrictedText}>
-                        부모님의 설정에 의해 이 화면의 접근이 제한되었습니다.
-                    </Typography>
-                </View>
-            </View>
-        );
-    }
 
     return (
         <View style={styles.container}>

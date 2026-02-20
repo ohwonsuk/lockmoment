@@ -417,8 +417,17 @@ export class AuthService {
         try {
             const response = await apiService.get<any>('/users/profile');
             if (response && response.success) {
-                await StorageService.setUserProfile(response.data);
-                return response.data;
+                const profileData = response.data;
+                await StorageService.setUserProfile(profileData);
+
+                // Sync restriction status if present (for children)
+                const userData = profileData.user || profileData;
+                const restrictionValue = userData.restrict_my_info ?? userData.restrictMyInfo;
+                if (restrictionValue !== undefined) {
+                    await StorageService.setMyInfoRestricted(!!restrictionValue);
+                }
+
+                return profileData;
             }
             return null;
         } catch (error) {

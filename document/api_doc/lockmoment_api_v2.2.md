@@ -90,7 +90,8 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
   "appleSub": "apple-user-unique-id",
   "name": "김철수",
   "phone": "01012345678",
-  "role": "PARENT | TEACHER",
+  "birthYear": 2015,
+  "role": "PARENT | TEACHER | CHILD",
   "email": "user@example.com"
 }
 ```
@@ -232,7 +233,8 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
       "display_name": "김철수",
       "email": "user@example.com",
       "role": "PARENT",
-      "phone_number": "01012345678"
+      "phone_number": "01012345678",
+      "birth_year": 1980
     },
     "relations": {
       "parents": [
@@ -240,7 +242,7 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
         { "id": "uuid2", "display_name": "아빠", "is_primary": false }
       ],
       "children": [
-        { "id": "uuid3", "display_name": "김민준", "nickname": "첫째" }
+        { "id": "uuid3", "display_name": "김민준", "nickname": "첫째", "birth_year": 2015 }
       ],
       "organizations": [
         { "id": "org-uuid", "name": "OO수학학원", "role": "TEACHER" }
@@ -423,6 +425,30 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
   "target_id": "uuid",
   "duration_minutes": 60,
   "max_uses": 1
+}
+```
+
+### 11. 등록용 QR 생성 (New v260220)
+`POST /parent-child/registration-qr`
+자녀 또는 다른 보호자를 초대/등록하기 위한 QR 페이로드를 생성합니다.
+
+**Request**:
+```json
+{
+  "type": "CHILD | PARENT",
+  "name": "자녀이름",
+  "birthYear": 2015,
+  "phone": "01012345678"
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "payload": "signed-qr-payload-string"
+  }
 }
 ```
 
