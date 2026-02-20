@@ -413,6 +413,20 @@ export class AuthService {
         }
     }
 
+    static async fetchUserProfile(): Promise<any | null> {
+        try {
+            const response = await apiService.get<any>('/users/profile');
+            if (response && response.success) {
+                await StorageService.setUserProfile(response.data);
+                return response.data;
+            }
+            return null;
+        } catch (error) {
+            console.error("[AuthService] Fetch profile failed:", error);
+            return null;
+        }
+    }
+
     static async getUserProfile(): Promise<UserInfo | any> {
         return await StorageService.getUserProfile();
     }

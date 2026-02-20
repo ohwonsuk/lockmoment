@@ -494,6 +494,15 @@ export const handler = async (event) => {
             const user = await requireAuth(event);
             const { pin } = data;
 
+            // pin이 명시적으로 null이거나 빈 문자열이면 삭제로 간주
+            if (pin === null || pin === "") {
+                await client.query(
+                    `UPDATE users SET pin_code = NULL, updated_at = NOW() WHERE id = $1`,
+                    [user.userId]
+                );
+                return response(200, { success: true, message: 'PIN이 삭제되었습니다.' });
+            }
+
             if (!pin || !/^\d{6}$/.test(pin)) {
                 return response(400, { success: false, message: 'PIN은 숫자 6자리여야 합니다.' });
             }
@@ -520,7 +529,7 @@ export const handler = async (event) => {
             if (dbPin === pin) {
                 return response(200, { success: true, message: 'PIN 검증 성공' });
             } else {
-                return response(401, { success: false, message: 'PIN이 일치하지 않습니다.' });
+                return response(400, { success: false, message: 'PIN이 일치하지 않습니다.' });
             }
         }
 

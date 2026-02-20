@@ -21,6 +21,7 @@ export const PinSettingsScreen: React.FC = () => {
     const [confirmPin, setConfirmPin] = useState('');
 
     const [errorMsg, setErrorMsg] = useState('');
+    const [pendingAction, setPendingAction] = useState<'CHANGE' | 'DELETE' | null>(null);
 
     useEffect(() => {
         loadPinStatus();
@@ -60,11 +61,35 @@ export const PinSettingsScreen: React.FC = () => {
         const success = await AuthService.verifyPin(currentPin);
         if (success) {
             setCurrentPin('');
-            setStep('NEW');
             setErrorMsg('');
+
+            if (pendingAction === 'DELETE') {
+                performDelete();
+            } else {
+                setStep('NEW');
+            }
         } else {
             setErrorMsg('현재 비밀번호가 일치하지 않습니다.');
             setCurrentPin('');
+        }
+    };
+
+    const performDelete = async () => {
+        const success = await AuthService.setPin("");
+        if (success) {
+            await StorageService.setHasPin(false);
+            showAlert({
+                title: "삭제 완료",
+                message: "비밀번호가 삭제되었습니다.",
+                confirmText: "확인",
+                onConfirm: () => goBack()
+            });
+        } else {
+            showAlert({
+                title: "삭제 실패",
+                message: "비밀번호 삭제 중 오류가 발생했습니다.",
+                confirmText: "확인"
+            });
         }
     };
 
@@ -107,7 +132,10 @@ export const PinSettingsScreen: React.FC = () => {
                 <Typography color="white" bold>{actionLabel}</Typography>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.cancelButton} onPress={() => hasPin ? setStep('MENU') : goBack()}>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => {
+                setPendingAction(null);
+                hasPin ? setStep('MENU') : goBack();
+            }}>
                 <Typography color={Colors.textSecondary}>취소</Typography>
             </TouchableOpacity>
         </View>
@@ -123,7 +151,10 @@ export const PinSettingsScreen: React.FC = () => {
                 <ScrollView contentContainerStyle={styles.content}>
                     {step === 'MENU' && (
                         <View style={styles.menuList}>
-                            <TouchableOpacity style={styles.menuItem} onPress={() => setStep('VERIFY')}>
+                            <TouchableOpacity style={styles.menuItem} onPress={() => {
+                                setPendingAction('CHANGE');
+                                setStep('VERIFY');
+                            }}>
                                 <View style={styles.menuIcon}>
                                     <Icon name="create-outline" size={24} color={Colors.text} />
                                 </View>
@@ -134,25 +165,8 @@ export const PinSettingsScreen: React.FC = () => {
                             <TouchableOpacity
                                 style={[styles.menuItem, { borderBottomWidth: 0 }]}
                                 onPress={() => {
-                                    showAlert({
-                                        title: "비밀번호 삭제",
-                                        message: "비밀번호를 삭제하시겠습니까? 삭제 시 누구나 '내 정보' 화면에 접근할 수 있습니다.",
-                                        confirmText: "삭제",
-                                        cancelText: "취소",
-                                        type: 'warning',
-                                        onConfirm: async () => {
-                                            // Backend doesn't have a delete endpoint explicitly but setting to empty or null works
-                                            // For now, let's assume setting empty string or null means no PIN
-                                            // The backend logic: if (pin === null) => deactivate.
-                                            // Let's call /auth/pin/set with empty string or null if allowed.
-                                            // Or just use a specific flow.
-                                            const success = await AuthService.setPin(""); // Assuming empty string removes it
-                                            if (success) {
-                                                await StorageService.setHasPin(false);
-                                                showAlert({ title: "삭제 완료", message: "비밀번호가 삭제되었습니다.", confirmText: "확인", onConfirm: () => goBack() });
-                                            }
-                                        }
-                                    });
+                                    setPendingAction('DELETE');
+                                    setStep('VERIFY');
                                 }}
                             >
                                 <View style={styles.menuIcon}>

@@ -5,15 +5,23 @@ import { Colors } from '../theme/Colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppNavigation } from '../navigation/NavigationContext';
 import { Icon } from './Icon';
+import { ContextSwitcher } from './ContextSwitcher';
 
 interface Props {
     title?: string;
     showBack?: boolean;
     onBack?: () => void;
-    hasPermission?: boolean; // Permission status for shield icon color
+    hasPermission?: boolean;
+    showContextSwitcher?: boolean; // 컨텍스트 전환기 노출 여부
 }
 
-export const Header: React.FC<Props> = ({ title = "락모먼트", showBack = false, onBack, hasPermission }) => {
+export const Header: React.FC<Props> = ({
+    title = "락모먼트",
+    showBack = false,
+    onBack,
+    hasPermission,
+    showContextSwitcher = true
+}) => {
     const insets = useSafeAreaInsets();
     const { navigate, currentScreen } = useAppNavigation();
 
@@ -23,6 +31,11 @@ export const Header: React.FC<Props> = ({ title = "락모먼트", showBack = fal
         } else {
             navigate('Dashboard');
         }
+    };
+
+    const handleContextChange = () => {
+        // 컨텍스트 변경 시 대시보드로 이동하거나 화면 리프레시 유도
+        navigate('Dashboard');
     };
 
     // Shield icon color: green if permission granted, red if denied, default gray if unknown
@@ -39,9 +52,13 @@ export const Header: React.FC<Props> = ({ title = "락모먼트", showBack = fal
                         <Icon name="chevron-back" size={28} color={Colors.primary} />
                     </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={() => navigate('Dashboard')}>
-                    <Typography variant="h1">{title}</Typography>
-                </TouchableOpacity>
+                {showContextSwitcher ? (
+                    <ContextSwitcher onContextChange={handleContextChange} />
+                ) : (
+                    <TouchableOpacity onPress={() => navigate('Dashboard')}>
+                        <Typography variant="h1">{title}</Typography>
+                    </TouchableOpacity>
+                )}
             </View>
 
             <View style={styles.rightIcons}>

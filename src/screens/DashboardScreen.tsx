@@ -348,9 +348,8 @@ export const DashboardScreen: React.FC = () => {
     };
 
     const handleManageChild = (childId: string) => {
-        // Navigate to Children tab with specific child selected
-        // For now, just navigate to Children tab
-        navigate('Children' as any, { initialChildId: childId });
+        // Navigate to Management screen with specific child context if needed
+        navigate('LinkSubUser' as any, { initialChildId: childId, role: 'PARENT' });
     }
 
 
@@ -423,7 +422,8 @@ export const DashboardScreen: React.FC = () => {
                             type: 'SCHEDULED',
                             title: s.name,
                             apps: s.lockedApps,
-                            isPersonal: true
+                            isPersonal: true,
+                            editPresetId: s.id  // ← 수정 모드로 진입
                         });
                     }
                 }}

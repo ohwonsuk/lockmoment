@@ -1,6 +1,29 @@
 import { apiService } from './ApiService';
 import { StorageService } from './StorageService';
 
+/**
+ * 실제 로그인 사용자 여부 판단
+ * 기준: auth_provider가 'ANONYMOUS'가 아닌 경우 (KAKAO, APPLE 등)
+ *
+ * - ANONYMOUS 사용자: users 테이블에 존재하나 auth_provider='ANONYMOUS',
+ *   role='CHILD'로 저장됨. device_id와 매칭된 관계만 있고 실제 로그인 계정 없음.
+ * - 로그인 사용자: auth_provider='KAKAO' 또는 'APPLE', users 테이블에 실제 계정 존재.
+ *
+ * ⚠️ role만으로 판단 불가 — 서버가 ANONYMOUS 사용자에게도 role='CHILD'를 부여함.
+ */
+async function isLoggedInUser(): Promise<boolean> {
+    const token = await StorageService.getAccessToken();
+    if (!token) return false;
+
+    const profile = await StorageService.getUserProfile();
+    // auth_provider가 없거나 'ANONYMOUS'이면 게스트 사용자
+    if (!profile || !profile.auth_provider || profile.auth_provider === 'ANONYMOUS') {
+        return false;
+    }
+    // 'KAKAO', 'APPLE' 등 실제 소셜 로그인 사용자만 true
+    return true;
+}
+
 export interface Preset {
     id: string;
     scope: 'SYSTEM' | 'ORG' | 'USER';
@@ -163,10 +186,10 @@ export class PresetService {
      */
     static async getPersonalPresets(): Promise<Preset[]> {
         try {
-            // Check if user is logged in
-            const token = await StorageService.getAccessToken();
+            // 카카오/애플 로그인 사용자만 서버 사용 (익명/게스트 제외)
+            const loggedIn = await isLoggedInUser();
 
-            if (token) {
+            if (loggedIn) {
                 // Logged in: fetch from server
                 const response = await apiService.get<{ success: boolean; presets: Preset[] }>('/personal-presets');
                 const serverPresets = response.presets || [];
@@ -175,7 +198,7 @@ export class PresetService {
                 await StorageService.savePersonalPresets(serverPresets);
                 return serverPresets;
             } else {
-                // Not logged in: use local storage
+                // Not logged in (or guest): use local storage only
                 const localPresets = await StorageService.getPersonalPresets();
                 return localPresets;
             }
@@ -192,10 +215,10 @@ export class PresetService {
      */
     static async savePersonalPreset(preset: Partial<Preset>): Promise<Preset> {
         try {
-            // Check if user is logged in
-            const token = await StorageService.getAccessToken();
+            // 카카오/애플 로그인 사용자만 서버 사용
+            const loggedIn = await isLoggedInUser();
 
-            if (token) {
+            if (loggedIn) {
                 // Logged in: save to server
                 const response = await apiService.post<{ success: boolean; preset: Preset }>('/personal-presets', preset);
 
@@ -205,7 +228,7 @@ export class PresetService {
 
                 return response.preset;
             } else {
-                // Not logged in: save to local storage only
+                // Guest / Not logged in: save to local storage only
                 const localPresets = await StorageService.getPersonalPresets();
                 const newPreset = {
                     ...preset,
@@ -233,14 +256,54 @@ export class PresetService {
     }
 
     /**
+     * 개인용 Preset 업데이트 (기존 항목 덮어쓰기)
+     */
+    static async updatePersonalPreset(presetId: string, preset: Partial<Preset>): Promise<Preset> {
+        try {
+            // 카카오/애플 로그인 사용자만 서버 사용
+            const loggedIn = await isLoggedInUser();
+
+            if (loggedIn) {
+                const response = await apiService.put<{ success: boolean; preset: Preset }>(
+                    `/personal-presets/${presetId}`,
+                    preset
+                );
+                const allPresets = await this.getPersonalPresets();
+                await StorageService.savePersonalPresets(allPresets);
+                return response.preset;
+            } else {
+                // Guest / Not logged in: update local storage only
+                const localPresets = await StorageService.getPersonalPresets();
+                const index = localPresets.findIndex((p: Preset) => p.id === presetId);
+                const updated = {
+                    ...localPresets[index],
+                    ...preset,
+                    id: presetId,
+                    updated_at: new Date().toISOString()
+                } as Preset;
+                if (index > -1) {
+                    localPresets[index] = updated;
+                } else {
+                    localPresets.push(updated);
+                }
+                await StorageService.savePersonalPresets(localPresets);
+                return updated;
+            }
+        } catch (error) {
+            console.error('[PresetService] updatePersonalPreset failed:', error);
+            throw error;
+        }
+    }
+
+    /**
      * 개인용 Preset 삭제
      */
     static async deletePersonalPreset(presetId: string): Promise<boolean> {
         try {
-            // Check if user is logged in
-            const token = await StorageService.getAccessToken();
+            // 카카오/애플 로그인 사용자만 서버 사용
+            const loggedIn = await isLoggedInUser();
 
-            if (token) {
+            if (loggedIn) {
                 // Logged in: delete from server
                 const response = await apiService.delete<{ success: boolean }>(`/personal-presets/${presetId}`);
 
@@ -250,7 +313,7 @@ export class PresetService {
 
                 return response.success;
             } else {
-                // Not logged in: delete from local storage
+                // Guest / Not logged in: delete from local storage only
                 const localPresets = await StorageService.getPersonalPresets();
                 const filtered = localPresets.filter((p: Preset) => p.id !== presetId);
                 await StorageService.savePersonalPresets(filtered);

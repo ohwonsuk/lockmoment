@@ -316,5 +316,23 @@ export const StorageService = {
         } catch (e) {
             console.error('Failed to save restriction flag', e);
         }
+    },
+
+    // 🔄 Context Management (260220 신규)
+    async getActiveContext(): Promise<{ type: 'SELF' | 'CHILD' | 'STUDENT'; id?: string } | null> {
+        try {
+            const val = await AsyncStorage.getItem('@lockmoment_active_context');
+            return val ? JSON.parse(val) : { type: 'SELF' };
+        } catch (e) {
+            return { type: 'SELF' };
+        }
+    },
+
+    async setActiveContext(context: { type: 'SELF' | 'CHILD' | 'STUDENT'; id?: string }): Promise<void> {
+        try {
+            await AsyncStorage.setItem('@lockmoment_active_context', JSON.stringify(context));
+        } catch (e) {
+            console.error('Failed to save active context', e);
+        }
     }
 };

@@ -24,6 +24,7 @@
 ### 통계 및 리포트 (New)
 1. `GET /parent-child/{childId}/usage-stats` - 오늘의 실시간 사용량 및 제한 시간 조회
 2. `GET /reports/usage/{childId}` - 최근 7일간의 일별 집중 시간 리포트 데이터
+3. `GET /users/profile` - **(New v260220)** 다중 보호자, 소속 기관, 역할 정보를 포함한 상세 프로필 조회
 
 ---
 
@@ -213,6 +214,39 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
 {
   "success": true,
   "message": "자녀의 내 정보 접근이 제한되었습니다."
+}
+```
+
+---
+
+### 3-4. 상세 프로필 조회 (Multi-Role & Relation 지원)
+`GET /users/profile`
+
+**Response**:
+```json
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "uuid",
+      "display_name": "김철수",
+      "email": "user@example.com",
+      "role": "PARENT",
+      "phone_number": "01012345678"
+    },
+    "relations": {
+      "parents": [
+        { "id": "uuid1", "display_name": "엄마", "is_primary": true },
+        { "id": "uuid2", "display_name": "아빠", "is_primary": false }
+      ],
+      "children": [
+        { "id": "uuid3", "display_name": "김민준", "nickname": "첫째" }
+      ],
+      "organizations": [
+        { "id": "org-uuid", "name": "OO수학학원", "role": "TEACHER" }
+      ]
+    }
+  }
 }
 ```
 
@@ -688,5 +722,5 @@ Apple 또는 카카오 로그인 후 이름, 휴대폰 번호 등 누락된 필�
 
 ---
 
-**Last Updated**: 2026-02-16
-**API Version**: 2.2.3
+**Last Updated**: 2026-02-20
+**API Version**: 2.2.4

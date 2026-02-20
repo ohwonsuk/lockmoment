@@ -37,14 +37,19 @@ export const MyInfoScreen: React.FC = () => {
     }, []);
 
     const loadData = async () => {
-        const profile = await AuthService.getUserProfile();
-        setUserProfile(profile);
+        // Fetch latest profile from server to get accurate relations/roles
+        const profile = await AuthService.fetchUserProfile();
+        if (profile) {
+            setUserProfile(profile);
+            // profile structure from Lambda v260220: { user: {...}, relations: { parents, children, organizations } }
+        } else {
+            const cachedProfile = await AuthService.getUserProfile();
+            setUserProfile(cachedProfile);
+        }
 
         const r = await StorageService.getUserRole();
         if (r) {
             setRole(r);
-        } else if (profile?.role) {
-            setRole(profile.role);
         }
 
         const prevent = await StorageService.getPreventAppRemoval();
@@ -143,7 +148,49 @@ export const MyInfoScreen: React.FC = () => {
         }
     };
 
-    const isAnonymous = userProfile?.auth_provider === 'ANONYMOUS';
+    const isAnonymous = userProfile?.auth_provider === 'ANONYMOUS' || userProfile?.user?.auth_provider === 'ANONYMOUS';
+
+    const renderRoleBadges = () => {
+        if (isAnonymous) return null;
+
+        const badges = [];
+        const profileData = userProfile?.user || userProfile; // Handle both direct and nested structure
+        const relations = userProfile?.relations;
+
+        // 1. Parent Role: Show only if children are linked
+        if (relations?.children && relations.children.length > 0) {
+            badges.push({ label: '부모', color: Colors.primary });
+        }
+
+        // 2. Organization Roles (Teacher, Admin)
+        if (relations?.organizations) {
+            relations.organizations.forEach((org: any) => {
+                const roleLabel = org.role === 'TEACHER' ? '선생님' : (org.role === 'ORG_ADMIN' ? '관리자' : org.role);
+                badges.push({ label: `${org.name} (${roleLabel})`, color: Colors.statusGreen });
+            });
+        }
+
+        // 3. Child Role: if not explicitly covered by other relations but role is CHILD
+        if (role === 'CHILD' && (!relations?.parents || relations.parents.length === 0)) {
+            badges.push({ label: '자녀', color: Colors.textSecondary });
+        } else if (relations?.parents && relations.parents.length > 0) {
+            badges.push({ label: '자녀', color: Colors.textSecondary });
+        }
+
+        if (badges.length === 0) return null;
+
+        return (
+            <View style={styles.badgeRow}>
+                {badges.map((badge, idx) => (
+                    <View key={idx} style={[styles.roleBadge, { backgroundColor: badge.color + '15', marginRight: 8 }]}>
+                        <Typography variant="caption" color={badge.color} bold>
+                            {badge.label}
+                        </Typography>
+                    </View>
+                ))}
+            </View>
+        );
+    };
 
     if (isRestricted && (role === 'CHILD' || role === 'STUDENT')) {
         return (
@@ -171,23 +218,25 @@ export const MyInfoScreen: React.FC = () => {
                         <Icon name="person" size={40} color="white" />
                     </View>
                     <View style={styles.profileInfo}>
-                        <Typography variant="h2" bold>{isAnonymous ? '일반 사용자' : (userProfile?.name || '사용자')}</Typography>
-                        {!isAnonymous && <Typography color={Colors.textSecondary}>{userProfile?.email || ''}</Typography>}
-                        {(!isAnonymous && role) && (
-                            <View style={styles.badgeRow}>
-                                <View style={[styles.roleBadge, { backgroundColor: Colors.primary + '15' }]}>
-                                    <Typography variant="caption" color={Colors.primary} bold>
-                                        {role === 'PARENT' ? '부모' : (role === 'CHILD' || role === 'STUDENT' ? '자녀' : (role === 'TEACHER' ? '선생님' : role))}
-                                    </Typography>
-                                </View>
-                            </View>
-                        )}
+                        <Typography variant="h2" bold>{isAnonymous ? '일반 사용자' : (userProfile?.user?.display_name || userProfile?.name || '사용자')}</Typography>
+                        {!isAnonymous && <Typography color={Colors.textSecondary}>{userProfile?.user?.email || userProfile?.email || ''}</Typography>}
+                        {renderRoleBadges()}
                     </View>
                     <Icon name="chevron-forward" size={24} color={Colors.border} />
                 </TouchableOpacity>
 
                 {/* Settings Section */}
                 <View style={styles.menuContainer}>
+                    {(userProfile?.relations?.children?.length > 0 || userProfile?.relations?.parents?.length > 0 || role === 'PARENT' || role === 'TEACHER' || role === 'ORG_ADMIN') && (
+                        <TouchableOpacity style={styles.menuItem} onPress={() => navigate('LinkSubUser', { role })}>
+                            <View style={styles.menuIcon}>
+                                <Icon name="people-outline" size={24} color={Colors.text} />
+                            </View>
+                            <Typography style={styles.menuLabel}>자녀 및 보호자 관리</Typography>
+                            <Icon name="chevron-forward" size={20} color={Colors.border} />
+                        </TouchableOpacity>
+                    )}
+
                     <TouchableOpacity style={styles.menuItem} onPress={() => navigate('PersonalPreset')}>
                         <View style={styles.menuIcon}>
                             <Icon name="options-outline" size={24} color={Colors.text} />
@@ -260,18 +309,29 @@ export const MyInfoScreen: React.FC = () => {
                 </View>
 
                 {/* Account Section */}
-                {!isAnonymous && (
-                    <>
-                        <View style={[styles.menuContainer, { marginTop: 24 }]}>
-                            <TouchableOpacity style={[styles.menuItem, { borderBottomWidth: 0 }]} onPress={handleLogout}>
-                                <View style={styles.menuIcon}>
-                                    <Icon name="log-out-outline" size={24} color="#EF4444" />
-                                </View>
-                                <Typography style={[styles.menuLabel, { color: '#EF4444' }]} bold>로그아웃</Typography>
-                                <Icon name="chevron-forward" size={20} color={Colors.border} />
-                            </TouchableOpacity>
-                        </View>
-                    </>
+                {isAnonymous ? (
+                    <View style={[styles.menuContainer, { marginTop: 24, borderColor: Colors.primary, borderWidth: 1 }]}>
+                        <TouchableOpacity
+                            style={[styles.menuItem, { borderBottomWidth: 0 }]}
+                            onPress={() => navigate('Login')}
+                        >
+                            <View style={styles.menuIcon}>
+                                <Icon name="person-add-outline" size={24} color={Colors.primary} />
+                            </View>
+                            <Typography style={[styles.menuLabel, { color: Colors.primary }]} bold>로그인 및 계정 연동</Typography>
+                            <Icon name="chevron-forward" size={20} color={Colors.primary} />
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <View style={[styles.menuContainer, { marginTop: 24 }]}>
+                        <TouchableOpacity style={[styles.menuItem, { borderBottomWidth: 0 }]} onPress={handleLogout}>
+                            <View style={styles.menuIcon}>
+                                <Icon name="log-out-outline" size={24} color="#EF4444" />
+                            </View>
+                            <Typography style={[styles.menuLabel, { color: '#EF4444' }]} bold>로그아웃</Typography>
+                            <Icon name="chevron-forward" size={20} color={Colors.border} />
+                        </TouchableOpacity>
+                    </View>
                 )}
 
                 <Typography variant="caption" color={Colors.textSecondary} style={{ textAlign: 'center', marginTop: 32 }}>

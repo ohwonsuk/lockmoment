@@ -38,6 +38,8 @@ import { PinSettingsScreen } from '../screens/PinSettingsScreen';
 import { PersonalQRGeneratorScreen } from '../screens/PersonalQRGeneratorScreen';
 import { ParentQRGeneratorScreen } from '../screens/ParentQRGeneratorScreen';
 import { TeacherQRGeneratorScreen } from '../screens/TeacherQRGeneratorScreen';
+import { StudentManagementScreen } from '../screens/StudentManagementScreen';
+import { OrgAdminScreen } from '../screens/OrgAdminScreen';
 import { StorageService } from '../services/StorageService';
 
 export const AppNavigator: React.FC = () => {
@@ -133,6 +135,10 @@ export const AppNavigator: React.FC = () => {
                 return <AppLockSettingsScreen />;
             case 'PinSettings':
                 return <PinSettingsScreen />;
+            case 'StudentManagement':
+                return <StudentManagementScreen />;
+            case 'OrgAdmin':
+                return <OrgAdminScreen />;
 
             default:
                 return <DashboardScreen />;
@@ -140,7 +146,7 @@ export const AppNavigator: React.FC = () => {
     };
 
     const isTabBarVisible = () => {
-        const mainTabs = ['Dashboard', 'Children', 'QR', 'Notification', 'MyInfo', 'Settings', 'ScheduleList', 'History'];
+        const mainTabs = ['Dashboard', 'Children', 'LinkSubUser', 'QR', 'Notification', 'MyInfo', 'Settings', 'ScheduleList', 'History'];
         return mainTabs.includes(currentScreen);
     };
 

@@ -3,6 +3,8 @@ import FamilyControls
 import ManagedSettings
 import SwiftUI
 
+// 메인 앱 타겟용 ManagedSettingsStore.Name 확장
+// (Extension 타겟은 DeviceActivityMonitorExtension.swift에 동일하게 선언)
 extension ManagedSettingsStore.Name {
     static let lockMoment = ManagedSettingsStore.Name("com.lockmoment.store")
 }
@@ -203,9 +205,17 @@ class LockModel: ObservableObject {
             store.shield.applications = nil
             store.shield.applicationCategories = .all()
         } else {
-            store.shield.applications = sel.applicationTokens
-            store.shield.applicationCategories = .specific(sel.categoryTokens)
-            store.shield.webDomains = sel.webDomainTokens
+            // APP 타입인데 선택된 앱/카테고리가 없으면 FULL로 fallback
+            let hasSelection = !sel.applicationTokens.isEmpty || !sel.categoryTokens.isEmpty
+            if !hasSelection {
+                print("[LockModel] APP type but selection is empty. Falling back to FULL lock.")
+                store.shield.applications = nil
+                store.shield.applicationCategories = .all()
+            } else {
+                store.shield.applications = sel.applicationTokens.isEmpty ? nil : sel.applicationTokens
+                store.shield.applicationCategories = sel.categoryTokens.isEmpty ? nil : .specific(sel.categoryTokens)
+                store.shield.webDomains = sel.webDomainTokens.isEmpty ? nil : sel.webDomainTokens
+            }
         }
     }
     

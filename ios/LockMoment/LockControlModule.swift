@@ -9,7 +9,8 @@ import ManagedSettings
 
 extension DeviceActivityName {
     static func schedule(_ id: String) -> DeviceActivityName {
-        return DeviceActivityName("com.lockmoment.schedule.\(id)")
+        // 64자 제한을 위해 접두사를 최대한 짧게 유지 (lms = LockMoment Schedule)
+        return DeviceActivityName("lms.\(id)")
     }
 }
 
@@ -274,19 +275,13 @@ class LockControl: NSObject {
           }
 
           let dayMap: [String: Int] = [
-              "일": 1, "월": 2, "화": 3, "수": 4, "목": 5, "금": 6, "토": 7
+              "일": 1, "월": 2, "화": 3, "수": 4, "목": 5, "금": 6, "토": 7,
+              "Sun": 1, "Mon": 2, "Tue": 3, "Wed": 4, "Thu": 5, "Fri": 6, "Sat": 7,
+              "Sunday": 1, "Monday": 2, "Tuesday": 3, "Wednesday": 4, "Thursday": 5, "Friday": 6, "Saturday": 7
           ]
 
-          // Prepare DeviceActivitySchedule
-          // DeviceActivitySchedule takes a single interval. If days differ, we might need multiple activities?
-          // Actually DeviceActivitySchedule has `intervalStart` and `intervalEnd` which are DateComponents.
-          // It repeats. But if we select specific days (Monday, Wednesday), we cannot express that in ONE DeviceActivitySchedule easily if simpler inputs.
-          // DeviceActivitySchedule documentation says it repeats.
-          // If we want Mon, Wed: we need separate schedules?
-          
-          // Strategy: Create one activity per day-schedule pair?
-          // E.g. "schedule_ID_Mon", "schedule_ID_Wed".
-          
+          var isCurrentlyInRange = false
+
           for day in days {
               guard let weekday = dayMap[day] else { continue }
               
@@ -302,16 +297,34 @@ class LockControl: NSObject {
                   intervalStart: startComponents,
                   intervalEnd: endComponents,
                   repeats: true,
-                  warningTime: DateComponents(minute: Int(preLockMinutes))
+                  warningTime: preLockMinutes > 0 ? DateComponents(minute: Int(preLockMinutes)) : nil
               )
               
+              // 현재 시간이 이미 예약 범위 내인지 확인 (즉시 적용을 위함)
+              let now = Date()
+              let calendar = Calendar.current
+              let currentWeekday = calendar.component(.weekday, from: now)
+              let currentTotal = calendar.component(.hour, from: now) * 60 + calendar.component(.minute, from: now)
+              let startTotal = startHour * 60 + startMinute
+              let endTotal = endHour * 60 + endMinute
+              
+              if currentWeekday == weekday {
+                  if isOvernight {
+                      if currentTotal >= startTotal { isCurrentlyInRange = true }
+                  } else {
+                      if currentTotal >= startTotal && currentTotal < endTotal { isCurrentlyInRange = true }
+                  }
+              } else if isOvernight && currentWeekday == endWeekday {
+                  if currentTotal < endTotal { isCurrentlyInRange = true }
+              }
+
               do {
                   try center.startMonitoring(specificActivityName, during: schedule)
               } catch {
-                  print("Failed to start monitoring for \(day): \(error)")
+                  print("[LockControl] Failed to start monitoring: \(error)")
               }
               
-              // Also schedule local notification as fallback/alert
+              // (알림 및 공유 데이터 저장 로직은 이전과 동일...)
               let content = UNMutableNotificationContent()
               content.title = "예약 잠금 시작"
               content.body = "'\(name)' 예약 잠금 시간이 되었습니다."
@@ -324,31 +337,44 @@ class LockControl: NSObject {
               notifComponents.second = 0
               
               let trigger = UNCalendarNotificationTrigger(dateMatching: notifComponents, repeats: true)
-              let request = UNNotificationRequest(identifier: "\(startBaseId)_\(day)", content: content, trigger: trigger)
+              let request = UNNotificationRequest(identifier: "start_\(scheduleId)_\(weekday)", content: content, trigger: trigger)
               notificationCenter.add(request)
 
-              // Save policy per weekday activity to shared defaults
               let defaults = UserDefaults(suiteName: "group.com.lockmoment") ?? UserDefaults.standard
-              
-              let normalizedType = (lockType == "APP_ONLY" || lockType.uppercased() == "APP") ? "APP" : "FULL"
+              var normalizedType = (lockType == "APP_ONLY" || lockType.uppercased() == "APP") ? "APP" : "FULL"
               let sel = normalizedType == "APP" ? LockModel.shared.appSelection : LockModel.shared.phoneSelection
-              // Use PropertyListEncoder for native Apple types like FamilyActivitySelection
-              let encodedSelection = try? PropertyListEncoder().encode(sel)
-
-              let policy: [String: Any] = [
+              
+              let hasAppSelection = !sel.applicationTokens.isEmpty || !sel.categoryTokens.isEmpty
+              if normalizedType == "APP" && !hasAppSelection {
+                  normalizedType = "FULL"
+              }
+              
+              let encodedSelection: Data? = normalizedType == "APP" ? (try? PropertyListEncoder().encode(sel)) : nil
+              if normalizedType == "APP", let selData = encodedSelection {
+                  defaults.set(selData, forKey: "selection_\(scheduleId)")
+              }
+              
+              var policy: [String: Any] = [
                   "lockType": normalizedType,
                   "preventAppRemoval": preventAppRemoval,
                   "name": name,
-                  "selection": encodedSelection as Any,
                   "startHour": startHour,
                   "startMinute": startMinute,
                   "endHour": endHour,
                   "endMinute": endMinute
               ]
+              if let selData = encodedSelection { policy["selection"] = selData }
               
               defaults.set(policy, forKey: "policy_\(scheduleId)_\(weekday)")
+              defaults.synchronize()
           }
           
+          // 현재 시간이 범위 내라면 즉시 잠금 실행 (Extension을 기다리지 않음)
+          if isCurrentlyInRange {
+              print("[LockControl] Currently in range, applying lock immediately.")
+              LockModel.shared.checkScheduledLocks(apply: true)
+          }
+
           resolve(true)
       } else {
           reject("OS_VERSION_ERROR", "Requires iOS 15.0+", nil)
@@ -378,6 +404,9 @@ class LockControl: NSObject {
           for weekday in 1...7 {
               defaults.removeObject(forKey: "policy_\(scheduleId)_\(weekday)")
           }
+          // Schedule별 selection 데이터도 삭제
+          defaults.removeObject(forKey: "selection_\(scheduleId)")
+          defaults.synchronize()
           
           resolve(true)
       } else {
@@ -415,21 +444,26 @@ class LockControl: NSObject {
                     (totalMinutes >= startTotal || totalMinutes < endTotal)
                 
                 if inRange {
-                    let parts = key.split(separator: "_")
-                    if parts.count >= 2 {
-                        let scheduleId = String(parts[1])
-                        if !stoppedIds.contains(scheduleId) {
-                            stoppedIds.append(scheduleId)
-                            
-                            // Stop monitoring and remove policy
-                            let days = [1,2,3,4,5,6,7]
-                            let activityNames = [DeviceActivityName.schedule(scheduleId)] + days.map { DeviceActivityName.schedule("\(scheduleId)_\($0)") }
-                            center.stopMonitoring(activityNames)
-                            
-                            for w in 1...7 {
-                                defaults.removeObject(forKey: "policy_\(scheduleId)_\(w)")
-                            }
+                    // key = "policy_{scheduleId}_{weekday}"
+                    // scheduleId 추출: "policy_" 접두사 제거 후 마지막 "_weekday" 제거
+                    let withoutPrefix = key.replacingOccurrences(of: "policy_", with: "")
+                    let parts = withoutPrefix.split(separator: "_")
+                    // 마지막 부분(weekday)을 제외한 나머지가 scheduleId
+                    let scheduleId = parts.dropLast().joined(separator: "_")
+                    
+                    if !scheduleId.isEmpty && !stoppedIds.contains(scheduleId) {
+                        stoppedIds.append(scheduleId)
+                        
+                        // Stop monitoring and remove policy
+                        let days = [1,2,3,4,5,6,7]
+                        let activityNames = [DeviceActivityName.schedule(scheduleId)] + days.map { DeviceActivityName.schedule("\(scheduleId)_\($0)") }
+                        center.stopMonitoring(activityNames)
+                        
+                        for w in 1...7 {
+                            defaults.removeObject(forKey: "policy_\(scheduleId)_\(w)")
                         }
+                        // Schedule별 selection 데이터도 삭제
+                        defaults.removeObject(forKey: "selection_\(scheduleId)")
                     }
                 }
             }

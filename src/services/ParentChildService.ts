@@ -40,11 +40,7 @@ export const ParentChildService = {
             return response.success ? response.data : [];
         } catch (error) {
             console.error('[ParentChildService] Failed to fetch children:', error);
-            // Return mock data for demo if API fails
-            return [
-                { id: 'child-1', childName: '김철수', deviceName: 'iPhone 13', status: 'LOCKED', lastSeenAt: new Date().toISOString(), hasPermission: true },
-                { id: 'child-2', childName: '이영희', deviceName: 'Galaxy S22', status: 'UNLOCKED', lastSeenAt: new Date().toISOString(), hasPermission: false }
-            ];
+            return [];
         }
     },
 
@@ -57,10 +53,7 @@ export const ParentChildService = {
             return response.success ? response.data : [];
         } catch (error) {
             console.error('[ParentChildService] Failed to fetch parents:', error);
-            return [
-                { id: 'parent-1', parentName: '나 (관리자)', email: 'me@example.com', isPrimary: true },
-                { id: 'parent-2', parentName: '배우자', email: 'partner@example.com', isPrimary: false }
-            ];
+            return [];
         }
     },
 
