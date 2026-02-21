@@ -469,13 +469,36 @@ export const PersonalQRGeneratorScreen: React.FC = () => {
         setSelectedCategories(prev => prev.includes(id) ? prev.filter(c => c !== id) : [...prev, id]);
     };
 
+    const handleModifyAppLockSettings = async () => {
+        const restricted = await StorageService.isMyInfoRestricted();
+        const role = await StorageService.getUserRole();
+        const context = await StorageService.getActiveContext();
+        const effectiveRole = context?.type || role;
+
+        if (restricted && (effectiveRole === 'CHILD' || effectiveRole === 'STUDENT' || effectiveRole === 'SELF')) {
+            showAlert({
+                title: "접근 제한",
+                message: "보호자의 설정에 의해 앱 잠금 설정 접근이 제한되었습니다.",
+                confirmText: "확인"
+            });
+            return;
+        }
+
+        navigate('AppLockSettings');
+    };
+
     // ── 이력 팝업 내 아이템 렌더 ─────────────────────────────
     const renderHistoryItem = ({ item }: { item: Preset }) => {
         const isScheduled = item.preset_type === 'SCHEDULED';
         const timeText = isScheduled && item.start_time && item.end_time
             ? `${item.start_time.substring(0, 5)} ~ ${item.end_time.substring(0, 5)}`
             : item.duration_minutes ? `${item.duration_minutes}분` : '';
-        const daysText = item.days && item.days.length > 0 ? item.days.join(' ') : '';
+        const daysText = item.days && item.days.length > 0
+            ? item.days.map(d => {
+                const map: Record<string, string> = { 'MON': '월', 'TUE': '화', 'WED': '수', 'THU': '목', 'FRI': '금', 'SAT': '토', 'SUN': '일' };
+                return map[d] || d;
+            }).join(' ')
+            : '';
         const lockLabel = item.lock_type === 'FULL' ? '전체 잠금' : '선택 잠금';
         const dateStr = item.created_at ? new Date(item.created_at).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }) : '';
 
@@ -586,7 +609,7 @@ export const PersonalQRGeneratorScreen: React.FC = () => {
                                         <Typography bold>스크린타임 설정 연동</Typography>
                                         <Typography variant="caption" color={Colors.textSecondary}>{iosCounts.categories}개 카테고리, {iosCounts.apps}개 앱 선택됨</Typography>
                                     </View>
-                                    <TouchableOpacity style={styles.iosModifyBtn} onPress={() => navigate('AppLockSettings')}>
+                                    <TouchableOpacity style={styles.iosModifyBtn} onPress={handleModifyAppLockSettings}>
                                         <Typography variant="caption" bold color={Colors.primary}>수정</Typography>
                                     </TouchableOpacity>
                                 </View>

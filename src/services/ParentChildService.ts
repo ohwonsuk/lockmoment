@@ -116,10 +116,25 @@ export const ParentChildService = {
      */
     async getChildSchedules(childId: string): Promise<any[]> {
         try {
+            console.log(`[ParentChildService] Fetching schedules for childId: ${childId}`);
             const response = await apiService.get<{ success: boolean; schedules: any[] }>(`/parent-child/${childId}/schedules`);
-            return response.success ? response.schedules : [];
-        } catch (error) {
-            console.error('[ParentChildService] Failed to fetch child schedules:', error);
+            console.log(`[ParentChildService] Response success=${response.success}, count=${response.schedules?.length || 0}`);
+            if (response.success && response.schedules) {
+                return response.schedules.map(s => ({
+                    ...s,
+                    isActive: s.is_active ?? s.isActive ?? true,
+                    startTime: s.start_time ?? s.startTime,
+                    endTime: s.end_time ?? s.endTime,
+                    lockType: s.lock_type ?? s.lockType,
+                    lockedApps: s.blocked_apps ?? s.lockedApps,
+                    lockedCategories: s.blocked_categories ?? s.lockedCategories,
+                    createdBy: s.created_by ?? s.createdBy,
+                }));
+            }
+            console.log('[ParentChildService] Response was not successful or no schedules array');
+            return [];
+        } catch (error: any) {
+            console.error('[ParentChildService] Failed to fetch child schedules:', error?.message || error);
             return [];
         }
     },

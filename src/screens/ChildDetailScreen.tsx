@@ -129,7 +129,7 @@ export const ChildDetailScreen: React.FC = () => {
 
     return (
         <View style={styles.container}>
-            <Header title={child.childName} />
+            <Header title={child.childName} showBack onBack={() => goBack()} />
 
             <ScrollView contentContainerStyle={styles.content}>
                 {/* Status Card */}
@@ -295,51 +295,76 @@ export const ChildDetailScreen: React.FC = () => {
                         </View>
 
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 24, marginBottom: 16 }}>
-                            <Typography variant="h2" bold>예약된 잠금</Typography>
+                            <Typography variant="h2" bold>예약된 잠금 (오늘)</Typography>
                         </View>
 
-                        {schedules.length === 0 ? (
-                            <View style={styles.emptySchedule}>
-                                <Icon name="calendar-outline" size={40} color={Colors.textSecondary} />
-                                <Typography variant="caption" color={Colors.textSecondary} style={{ marginTop: 8 }}>
-                                    등록된 스케줄이 없습니다.{'\n'}
-                                    규칙적인 습관을 위해 스케줄을 추가해보세요.
-                                </Typography>
-                            </View>
-                        ) : (
-                            <View style={{ gap: 12 }}>
-                                {schedules.map(schedule => {
-                                    const startTime = schedule.startTime ? schedule.startTime.substring(0, 5) : "--:--";
-                                    const endTime = schedule.endTime ? schedule.endTime.substring(0, 5) : "--:--";
-                                    const daysDisplay = Array.isArray(schedule.days) ? schedule.days.map((d: string) => {
-                                        const map: Record<string, string> = { 'MON': '월', 'TUE': '화', 'WED': '수', 'THU': '목', 'FRI': '금', 'SAT': '토', 'SUN': '일' };
-                                        return map[d] || d;
-                                    }).join(' ') : "";
+                        {(() => {
+                            const todayIndex = new Date().getDay();
+                            const koDayMap: Record<number, string> = { 0: '일', 1: '월', 2: '화', 3: '수', 4: '목', 5: '금', 6: '토' };
+                            const enDayMap: Record<number, string> = { 0: 'SUN', 1: 'MON', 2: 'TUE', 3: 'WED', 4: 'THU', 5: 'FRI', 6: 'SAT' };
+                            const todayKoDay = koDayMap[todayIndex];
+                            const todayEnDay = enDayMap[todayIndex];
 
-                                    return (
-                                        <TouchableOpacity
-                                            key={schedule.id}
-                                            style={styles.scheduleItem}
-                                            onPress={() => navigate('ScheduleEdit', { childId: child.id, scheduleId: schedule.id, mode: 'EDIT', scheduleData: schedule })}
-                                        >
-                                            <View style={{ flex: 1 }}>
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                                                    <Typography bold>{schedule.name}</Typography>
-                                                    {schedule.lockType === 'FULL' && (
-                                                        <View style={styles.badge}><Typography style={styles.badgeText}>전체 잠금</Typography></View>
-                                                    )}
+                            const todaySchedules = schedules.filter(s => {
+                                const days = s.days || [];
+                                return Array.isArray(days) && (days.includes(todayKoDay) || days.includes(todayEnDay));
+                            });
+
+                            if (todaySchedules.length === 0) {
+                                return (
+                                    <View style={styles.emptySchedule}>
+                                        <Icon name="calendar-outline" size={40} color={Colors.textSecondary} />
+                                        <Typography variant="caption" color={Colors.textSecondary} style={{ marginTop: 8 }}>
+                                            오늘 예정된 스케줄이 없습니다.
+                                        </Typography>
+                                    </View>
+                                );
+                            }
+
+                            return (
+                                <View style={{ gap: 12 }}>
+                                    {todaySchedules.map(schedule => {
+                                        const st = schedule.startTime || schedule.start_time || "";
+                                        const et = schedule.endTime || schedule.end_time || "";
+                                        const startTime = st ? st.substring(0, 5) : "--:--";
+                                        const endTime = et ? et.substring(0, 5) : "--:--";
+
+                                        const daysDisplay = Array.isArray(schedule.days) ? schedule.days.map((d: string) => {
+                                            const map: Record<string, string> = { 'MON': '월', 'TUE': '화', 'WED': '수', 'THU': '목', 'FRI': '금', 'SAT': '토', 'SUN': '일' };
+                                            return map[d] || d;
+                                        }).join(' ') : "";
+
+                                        return (
+                                            <TouchableOpacity
+                                                key={schedule.id}
+                                                style={styles.scheduleItem}
+                                                onPress={() => navigate('QRGenerator', { childId: child.id, scheduleId: schedule.id, mode: 'EDIT', scheduleData: schedule })}
+                                            >
+                                                <View style={{ flex: 1 }}>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                                        <Typography bold>{schedule.name}</Typography>
+                                                        {schedule.lockType === 'FULL' && (
+                                                            <View style={styles.badge}><Typography style={styles.badgeText}>전체 잠금</Typography></View>
+                                                        )}
+                                                        <View style={[styles.badge, { backgroundColor: schedule.isActive ? Colors.primary + '20' : Colors.textSecondary + '20' }]}>
+                                                            <Typography style={[styles.badgeText, { color: schedule.isActive ? Colors.primary : Colors.textSecondary }]}>
+                                                                {schedule.isActive ? '활성' : '비활성'}
+                                                            </Typography>
+                                                        </View>
+                                                    </View>
+                                                    <Typography variant="h2" style={{ marginBottom: 4 }}>{startTime} ~ {endTime}</Typography>
+                                                    <Typography variant="caption" color={Colors.textSecondary}>{daysDisplay}</Typography>
                                                 </View>
-                                                <Typography variant="h2" style={{ marginBottom: 4 }}>{startTime} ~ {endTime}</Typography>
-                                                <Typography variant="caption" color={Colors.textSecondary}>{daysDisplay}</Typography>
-                                            </View>
-                                            <TouchableOpacity onPress={(e) => { e.stopPropagation(); handleToggleSchedule(schedule.id, schedule.isActive); }}>
-                                                <Icon name={schedule.isActive ? "toggle" : "toggle-outline"} size={32} color={schedule.isActive ? Colors.primary : Colors.textSecondary} />
+                                                <TouchableOpacity onPress={(e) => { e.stopPropagation(); handleToggleSchedule(schedule.id, schedule.isActive); }}>
+                                                    <Icon name={schedule.isActive ? "toggle" : "toggle-outline"} size={40} color={schedule.isActive ? Colors.primary : Colors.textSecondary} />
+                                                </TouchableOpacity>
                                             </TouchableOpacity>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
-                        )}
+                                        );
+                                    })}
+                                </View>
+                            );
+                        })()}
+
                     </View>
                 ) : (
                     <View style={styles.section}>

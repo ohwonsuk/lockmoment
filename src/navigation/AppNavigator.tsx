@@ -32,6 +32,7 @@ import { ScheduleListScreen } from '../screens/ScheduleListScreen';
 import { ScheduleEditScreen } from '../screens/ScheduleEditScreen';
 import { UsageReportScreen } from '../screens/UsageReportScreen';
 import { PersonalPresetScreen } from '../screens/PersonalPresetScreen';
+import { ReadOnlyScheduleScreen } from '../screens/ReadOnlyScheduleScreen';
 import { AppLockSettingsScreen } from '../screens/AppLockSettingsScreen';
 import { PinSettingsScreen } from '../screens/PinSettingsScreen';
 
@@ -133,6 +134,8 @@ export const AppNavigator: React.FC = () => {
                 return <PersonalPresetScreen />;
             case 'AppLockSettings':
                 return <AppLockSettingsScreen />;
+            case 'ReadOnlySchedule':
+                return <ReadOnlyScheduleScreen />;
             case 'PinSettings':
                 return <PinSettingsScreen />;
             case 'StudentManagement':

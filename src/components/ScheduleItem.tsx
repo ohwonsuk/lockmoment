@@ -28,7 +28,14 @@ export const ScheduleItem: React.FC<Props> = ({ schedule, onPress, onToggle, onG
             onPress={onPress}
         >
             <View style={styles.header}>
-                <Typography variant="h2" bold>{schedule.name}</Typography>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Typography variant="h2" bold>{schedule.name}</Typography>
+                    <View style={[styles.badge, { backgroundColor: schedule.isActive ? Colors.primary + '20' : Colors.textSecondary + '20' }]}>
+                        <Typography style={[styles.badgeText, { color: schedule.isActive ? Colors.primary : Colors.textSecondary }]}>
+                            {schedule.isActive ? '활성' : '비활성'}
+                        </Typography>
+                    </View>
+                </View>
                 <View style={styles.headerRight}>
                     {isReadOnly && (
                         <View style={styles.readOnlyBadge}>
@@ -63,7 +70,12 @@ export const ScheduleItem: React.FC<Props> = ({ schedule, onPress, onToggle, onG
                     {schedule.timeRange}
                 </Typography>
                 <Typography color={Colors.primary} bold style={styles.daysText}>
-                    {schedule.days.join(' ')}
+                    {schedule.days.map(d => {
+                        const map: Record<string, string> = {
+                            'MON': '월', 'TUE': '화', 'WED': '수', 'THU': '목', 'FRI': '금', 'SAT': '토', 'SUN': '일'
+                        };
+                        return map[d] || d;
+                    }).join(' ')}
                 </Typography>
             </View>
         </TouchableOpacity>
@@ -115,5 +127,14 @@ const styles = StyleSheet.create({
         paddingVertical: 4,
         borderRadius: 8,
         marginRight: 8,
+    },
+    badge: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+    },
+    badgeText: {
+        fontSize: 10,
+        fontWeight: 'bold',
     },
 });

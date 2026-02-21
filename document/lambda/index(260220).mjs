@@ -1031,9 +1031,10 @@ export const handler = async (event) => {
             const childId = pathParts[pathParts.indexOf('parent-child') + 1];
             const scheduleId = pathParts.length > pathParts.indexOf('schedules') + 1 ? pathParts[pathParts.indexOf('schedules') + 1] : null;
 
-            // 권한 확인
-            const authCheck = await client.query('SELECT 1 FROM parent_child_relations WHERE parent_user_id = $1 AND child_user_id = $2', [user.userId, childId]);
-            if (authCheck.rows.length === 0) return response(403, { success: false, message: '권한이 없습니다' });
+            // 권한 확인: 부모이거나, 자녀 본인이어야 함
+            const isParent = (await client.query('SELECT 1 FROM parent_child_relations WHERE parent_user_id = $1 AND child_user_id = $2', [user.userId, childId])).rows.length > 0;
+            const isSelf = user.userId === childId;
+            if (!isParent && !isSelf) return response(403, { success: false, message: '권한이 없습니다' });
 
             if (httpMethod === 'GET') {
                 const res = await client.query(`SELECT * FROM child_schedules WHERE child_user_id = $1`, [childId]);

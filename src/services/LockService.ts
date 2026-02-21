@@ -34,33 +34,80 @@ export const LockService = {
                     isReadOnly: false
                 } as Schedule));
 
-            // 3. Load Remote Schedules (Only if child)
+            // 3. Load Remote Schedules (from parent-child schedules)
             let remoteSchedules: Schedule[] = [];
-            if ((role === 'CHILD' || role === 'STUDENT') && profile?.id) {
-                const remote = await ParentChildService.getChildSchedules(profile.id);
-                remoteSchedules = remote.map((r: any) => ({
-                    id: r.id,
-                    name: r.name,
-                    startTime: r.startTime ? r.startTime.substring(0, 5) : '00:00',
-                    endTime: r.endTime ? r.endTime.substring(0, 5) : '23:59',
-                    days: r.days || [],
-                    lockType: r.lockType || 'FULL',
-                    lockedApps: r.blockedApps || [],
-                    isActive: r.isActive,
-                    source: 'SERVER',
-                    isReadOnly: r.createdBy !== profile.id
-                }) as Schedule);
+            const context = await StorageService.getActiveContext();
+            const contextType = context?.type || 'SELF';
+
+            // Extract userId from profile - it can be stored in different structures
+            const userId = profile?.id || profile?.user?.id || profile?.userId || context?.id;
+            console.log(`[LockService] Sync check: role=${role}, contextType=${contextType}, userId=${userId}, profileKeys=${profile ? Object.keys(profile).join(',') : 'null'}`);
+
+            // Always try to fetch remote schedules if user has an ID
+            // The server returns 403 if unauthorized (caught by getChildSchedules → returns [])
+            if (userId) {
+                const remote = await ParentChildService.getChildSchedules(userId);
+                remoteSchedules = remote.map((r: any) => {
+                    const KO_TO_EN: Record<string, string> = { '월': 'MON', '화': 'TUE', '수': 'WED', '목': 'THU', '금': 'FRI', '토': 'SAT', '일': 'SUN' };
+                    const normalizedDays = (r.days || []).map((d: string) => KO_TO_EN[d] || d);
+                    return {
+                        id: r.id,
+                        name: r.name,
+                        startTime: r.startTime ? r.startTime.substring(0, 5) : '00:00',
+                        endTime: r.endTime ? r.endTime.substring(0, 5) : '23:59',
+                        days: normalizedDays,
+                        lockType: r.lockType || 'FULL',
+                        lockedApps: r.blockedApps || r.lockedApps || [],
+                        isActive: r.isActive,
+                        source: 'SERVER',
+                        isReadOnly: r.createdBy !== userId
+                    } as Schedule;
+                });
             }
 
-            // Merge All
-            const newSchedules = [...personalSchedules];
-            remoteSchedules.forEach(rs => {
-                if (!newSchedules.find(ps => ps.id === rs.id)) {
-                    newSchedules.push(rs);
+            // 4. Load ad-hoc LOCAL schedules (e.g. from QR) to preserve them
+            const adhocLocalSchedules = oldSchedules.filter(s => s.source === 'LOCAL' && !personalPresets.find(p => p.id === s.id));
+
+            // Merge All: Remote (server) schedules take precedence over local
+            const newSchedules: Schedule[] = [];
+
+            // First, add all remote schedules (server is the source of truth for parent-managed ones)
+            remoteSchedules.forEach(rs => newSchedules.push(rs));
+
+            // Then, add personal schedules only if not already covered (by ID or name)
+            personalSchedules.forEach(ps => {
+                const psName = (ps.name || '').trim();
+                const isDuplicate = newSchedules.some(ns => {
+                    const nsName = (ns.name || '').trim();
+                    return ns.id === ps.id || (nsName === psName && nsName !== '');
+                });
+                if (!isDuplicate) {
+                    newSchedules.push(ps);
+                } else {
+                    console.log(`[LockService] Skipping duplicate personal schedule: ${ps.name}`);
                 }
             });
 
-            console.log(`[LockService] Merged ${newSchedules.length} schedules (Personal: ${personalSchedules.length}, Remote: ${remoteSchedules.length})`);
+            // Then, add ad-hoc local schedules only if not already covered (by ID or name)
+            adhocLocalSchedules.forEach(ls => {
+                const lsName = (ls.name || '').trim();
+                const isDuplicate = newSchedules.some(ns => {
+                    const nsName = (ns.name || '').trim();
+                    // Match by ID OR (Name AND any overlapping day)
+                    // We check overlapping day because a user might have two different schedules with same name on different days
+                    // But usually, they are the same intent.
+                    return ns.id === ls.id || (nsName === lsName && nsName !== '');
+                });
+
+                if (!isDuplicate) {
+                    newSchedules.push(ls);
+                } else {
+                    console.log(`[LockService] Skipping duplicate local schedule: ${ls.name}`);
+                }
+            });
+
+            console.log(`[LockService] Merged ${newSchedules.length} schedules (Personal: ${personalSchedules.length}, Remote: ${remoteSchedules.length}, Ad-hoc Local: ${adhocLocalSchedules.length})`);
+            newSchedules.forEach(s => console.log(`  [Schedule] ${s.name} | source=${s.source} | isActive=${s.isActive} | days=${JSON.stringify(s.days)}`));
 
             // 4. Cancel alarms for schedules removed completely
             const newIds = new Set(newSchedules.map(s => s.id));

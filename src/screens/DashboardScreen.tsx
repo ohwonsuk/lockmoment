@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Platform, AppState } from 'react-native';
 import { Colors } from '../theme/Colors';
 import { Header } from '../components/Header';
 import { QuickLockCard } from '../components/QuickLockCard';
@@ -30,6 +30,9 @@ export const DashboardScreen: React.FC = () => {
     const [isPickerVisible, setIsPickerVisible] = useState(false);
     const [schedules, setSchedules] = useState<Schedule[]>([]);
     const [children, setChildren] = useState<ChildInfo[]>([]);
+    const [allChildSchedules, setAllChildSchedules] = useState<any[]>([]);
+    const [selectedChildFilter, setSelectedChildFilter] = useState<string>('all');
+    const [selectedDayFilter, setSelectedDayFilter] = useState<string>('');
     const [userRole, setUserRole] = useState<string>('USER');
     const [contextType, setContextType] = useState<'SELF' | 'PARENT' | 'TEACHER' | 'CHILD' | 'STUDENT' | 'ORG_ADMIN' | 'ORG_STAFF'>('SELF');
     const [viewMode, setViewMode] = useState<'PERSONAL' | 'ADMIN'>('PERSONAL');
@@ -41,6 +44,8 @@ export const DashboardScreen: React.FC = () => {
         const init = async () => {
             await loadUserRole();
             refreshAll();
+            const DAYS_KO = ['일', '월', '화', '수', '목', '금', '토'];
+            setSelectedDayFilter(DAYS_KO[new Date().getDay()]);
         };
         init();
     }, []);
@@ -63,6 +68,32 @@ export const DashboardScreen: React.FC = () => {
             if (timerRef.current) clearInterval(timerRef.current);
         };
     }, [userRole]);
+
+    // Foreground sync: when child/student user brings app back, re-sync schedules from server
+    useEffect(() => {
+        const userContexts = ['SELF', 'CHILD', 'STUDENT'];
+        if (!userContexts.includes(contextType)) return;
+
+        const subscription = AppState.addEventListener('change', (nextState) => {
+            if (nextState === 'active') {
+                console.log('[Dashboard] App returned to foreground, syncing schedules...');
+                syncAndLoadSchedules();
+            }
+        });
+        return () => subscription.remove();
+    }, [contextType]);
+
+    // Periodic sync: re-sync every 60 seconds for child/student so parent changes are picked up
+    useEffect(() => {
+        const userContexts = ['SELF', 'CHILD', 'STUDENT'];
+        if (!userContexts.includes(contextType)) return;
+
+        const syncInterval = setInterval(() => {
+            console.log('[Dashboard] Periodic schedule sync...');
+            syncAndLoadSchedules();
+        }, 60000);
+        return () => clearInterval(syncInterval);
+    }, [contextType]);
 
     const loadUserRole = async () => {
         const role = await StorageService.getUserRole();
@@ -187,6 +218,18 @@ export const DashboardScreen: React.FC = () => {
     const loadChildren = async () => {
         const data = await ParentChildService.getLinkedChildren();
         setChildren(data);
+
+        let all: any[] = [];
+        for (const child of data) {
+            try {
+                const schs = await ParentChildService.getChildSchedules(child.id);
+                const mapped = schs.map(s => ({ ...s, childId: child.id, childName: child.childName }));
+                all = [...all, ...mapped];
+            } catch (e) {
+                console.error("Failed to load schedule for child", child.id);
+            }
+        }
+        setAllChildSchedules(all);
     };
 
     const restoreLock = async () => {
@@ -318,6 +361,19 @@ export const DashboardScreen: React.FC = () => {
         }
     };
 
+    const handleToggleChildSchedule = async (childId: string, scheduleId: string, currentState: boolean) => {
+        try {
+            const res = await ParentChildService.toggleChildScheduleStatus(childId, scheduleId, !currentState);
+            if (res.success) {
+                setAllChildSchedules(prev => prev.map(s => s.id === scheduleId ? { ...s, isActive: !currentState } : s));
+            } else {
+                showAlert({ title: "오류", message: res.message || "상태 변경에 실패했습니다." });
+            }
+        } catch (e) {
+            showAlert({ title: "오류", message: "네트워크 오류가 발생했습니다." });
+        }
+    };
+
     const handleApplyPreset = async (preset: Preset) => {
         if (children.length === 0) {
             showAlert({ title: "알림", message: "잠금을 적용할 연결된 자녀가 없습니다." });
@@ -395,6 +451,112 @@ export const DashboardScreen: React.FC = () => {
                                 </Typography>
                             </View>
                         )}
+
+                        {contextType === 'PARENT' && children.length > 0 && (
+                            <>
+                                <View style={[styles.sectionHeader, { marginTop: 10 }]}>
+                                    <Typography variant="h2" bold>자녀 예약 스케줄</Typography>
+                                </View>
+
+                                {/* Child Filter */}
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryTabs}>
+                                    {children.length > 1 && (
+                                        <TouchableOpacity
+                                            style={[styles.categoryTab, selectedChildFilter === 'all' && styles.categoryTabSelected]}
+                                            onPress={() => setSelectedChildFilter('all')}
+                                        >
+                                            <Typography variant="caption" bold={selectedChildFilter === 'all'} color={selectedChildFilter === 'all' ? '#FFF' : Colors.text}>전체 자녀</Typography>
+                                        </TouchableOpacity>
+                                    )}
+                                    {children.map(c => (
+                                        <TouchableOpacity
+                                            key={c.id}
+                                            style={[styles.categoryTab, selectedChildFilter === c.id && styles.categoryTabSelected]}
+                                            onPress={() => setSelectedChildFilter(c.id)}
+                                        >
+                                            <Typography variant="caption" bold={selectedChildFilter === c.id} color={selectedChildFilter === c.id ? '#FFF' : Colors.text}>{c.childName}</Typography>
+                                        </TouchableOpacity>
+                                    ))}
+                                </ScrollView>
+
+                                {/* Days Filter */}
+                                <View style={styles.daysContainer}>
+                                    {['일', '월', '화', '수', '목', '금', '토'].map(day => (
+                                        <TouchableOpacity
+                                            key={day}
+                                            style={[styles.dayItem, selectedDayFilter === day && styles.dayItemSelected]}
+                                            onPress={() => setSelectedDayFilter(day)}
+                                        >
+                                            <Typography variant="caption" bold color={selectedDayFilter === day ? Colors.primary : Colors.textSecondary}>{day}</Typography>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+
+                                {/* Filtered Schedule List */}
+                                <View style={styles.scheduleList}>
+                                    {(() => {
+                                        const filteredChildSchedules = allChildSchedules.filter(s => {
+                                            if (selectedChildFilter !== 'all' && s.childId !== selectedChildFilter) return false;
+                                            const map: Record<string, string> = { '일': 'SUN', '월': 'MON', '화': 'TUE', '수': 'WED', '목': 'THU', '금': 'FRI', '토': 'SAT' };
+                                            const engDay = map[selectedDayFilter] || selectedDayFilter;
+                                            if (s.days && Array.isArray(s.days)) {
+                                                return s.days.includes(engDay) || s.days.includes(selectedDayFilter);
+                                            }
+                                            return false;
+                                        });
+
+                                        if (filteredChildSchedules.length === 0) {
+                                            return (
+                                                <View style={styles.emptyState}>
+                                                    <Typography color={Colors.textSecondary} variant="caption">
+                                                        {selectedDayFilter}요일에 설정된 자녀 예약이 없습니다.
+                                                    </Typography>
+                                                </View>
+                                            );
+                                        }
+
+                                        return filteredChildSchedules.map(schedule => {
+                                            const st = schedule.startTime || schedule.start_time || "";
+                                            const et = schedule.endTime || schedule.end_time || "";
+                                            const startTime = st ? st.substring(0, 5) : "--:--";
+                                            const endTime = et ? et.substring(0, 5) : "--:--";
+
+                                            const daysDisplay = Array.isArray(schedule.days) ? schedule.days.map((d: string) => {
+                                                const map: Record<string, string> = { 'MON': '월', 'TUE': '화', 'WED': '수', 'THU': '목', 'FRI': '금', 'SAT': '토', 'SUN': '일' };
+                                                return map[d] || d;
+                                            }).join(' ') : "";
+
+                                            return (
+                                                <TouchableOpacity
+                                                    key={schedule.id}
+                                                    style={styles.childScheduleItem}
+                                                    onPress={() => navigate('QRGenerator', { childId: schedule.childId, scheduleId: schedule.id, mode: 'EDIT', scheduleData: schedule })}
+                                                >
+                                                    <View style={{ flex: 1 }}>
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                                            <Typography bold>[{schedule.childName}] {schedule.name}</Typography>
+                                                            {schedule.lockType === 'FULL' && (
+                                                                <View style={styles.badge}><Typography style={styles.badgeText}>전체 잠금</Typography></View>
+                                                            )}
+                                                            <View style={[styles.badge, { backgroundColor: schedule.isActive ? Colors.primary + '20' : Colors.textSecondary + '20' }]}>
+                                                                <Typography style={[styles.badgeText, { color: schedule.isActive ? Colors.primary : Colors.textSecondary }]}>
+                                                                    {schedule.isActive ? '활성' : '비활성'}
+                                                                </Typography>
+                                                            </View>
+                                                        </View>
+                                                        <Typography variant="h2" style={{ marginBottom: 4 }}>{startTime} ~ {endTime}</Typography>
+                                                        <Typography variant="caption" color={Colors.textSecondary}>{daysDisplay}</Typography>
+                                                    </View>
+                                                    <TouchableOpacity onPress={(e) => { e.stopPropagation(); handleToggleChildSchedule(schedule.childId, schedule.id, schedule.isActive); }}>
+                                                        <Icon name={schedule.isActive ? "toggle" : "toggle-outline"} size={40} color={schedule.isActive ? Colors.primary : Colors.textSecondary} />
+                                                    </TouchableOpacity>
+                                                </TouchableOpacity>
+                                            );
+                                        });
+                                    })()}
+                                </View>
+                            </>
+                        )}
                         <View style={{ height: 24 }} />
                     </>
                 )}
@@ -452,13 +614,17 @@ export const DashboardScreen: React.FC = () => {
                             onPressItem={(id) => {
                                 const s = schedules.find(x => x.id === id);
                                 if (s) {
-                                    navigate('QRGenerator', {
-                                        type: 'SCHEDULED',
-                                        title: s.name,
-                                        apps: s.lockedApps,
-                                        isPersonal: true,
-                                        editPresetId: s.id
-                                    });
+                                    if (s.isReadOnly) {
+                                        navigate('ReadOnlySchedule', { scheduleId: s.id });
+                                    } else {
+                                        navigate('QRGenerator', {
+                                            type: 'SCHEDULED',
+                                            title: s.name,
+                                            apps: s.lockedApps,
+                                            isPersonal: true,
+                                            editPresetId: s.id
+                                        });
+                                    }
                                 }
                             }}
                             onToggle={handleToggleSchedule}
@@ -565,6 +731,67 @@ const styles = StyleSheet.create({
     emptyState: {
         padding: 40,
         alignItems: 'center',
+    },
+    categoryTabs: {
+        paddingHorizontal: 20,
+        marginBottom: 16,
+        gap: 8,
+    },
+    categoryTab: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    categoryTabSelected: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    daysContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        marginBottom: 16,
+    },
+    dayItem: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: Colors.card,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    dayItemSelected: {
+        borderColor: Colors.primary,
+        backgroundColor: Colors.primary + '15',
+    },
+    scheduleList: {
+        paddingHorizontal: 20,
+    },
+    childScheduleItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        backgroundColor: Colors.card,
+        borderRadius: 16,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: Colors.border,
+    },
+    badge: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 8,
+        backgroundColor: Colors.primary + '15',
+    },
+    badgeText: {
+        fontSize: 10,
+        fontWeight: 'bold',
+        color: Colors.primary,
     },
     footer: {
         marginTop: 40,

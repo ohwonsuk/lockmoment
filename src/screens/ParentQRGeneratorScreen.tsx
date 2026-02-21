@@ -14,26 +14,32 @@ import { useAppNavigation } from '../navigation/NavigationContext';
 import { ParentChildService, ChildInfo } from '../services/ParentChildService';
 import { MetaDataService, AppCategory } from '../services/MetaDataService';
 import { useAlert } from '../context/AlertContext';
+import { LockService } from '../services/LockService';
 
 const isIOS = Platform.OS === 'ios';
 const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
 
 export const ParentQRGeneratorScreen: React.FC = () => {
-    const { currentParams } = useAppNavigation();
+    const { currentParams, goBack } = useAppNavigation();
     const { showAlert } = useAlert();
     const params = currentParams || {};
 
+    const mode = params.mode || 'CREATE';
+    const editChildId = params.childId || 'all';
+    const editScheduleId = params.scheduleId;
+    const scheduleData = params.scheduleData;
+
     // Base State
-    const [qrType, setQrType] = useState<'INSTANT' | 'SCHEDULED'>('INSTANT');
-    const [lockTitle, setLockTitle] = useState('자녀 잠금');
+    const [qrType, setQrType] = useState<'INSTANT' | 'SCHEDULED'>(mode === 'EDIT' ? 'SCHEDULED' : 'INSTANT');
+    const [lockTitle, setLockTitle] = useState(scheduleData?.name || '자녀 잠금');
     const [duration, setDuration] = useState(60);
-    const [selectedApps, setSelectedApps] = useState<string[]>([]);
+    const [selectedApps, setSelectedApps] = useState<string[]>(scheduleData?.blockedApps || []);
     const [qrValue, setQrValue] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
 
     // Child Selection
     const [children, setChildren] = useState<ChildInfo[]>([]);
-    const [selectedChildId, setSelectedChildId] = useState<string>('all');
+    const [selectedChildId, setSelectedChildId] = useState<string>(editChildId);
 
     // History State
     const [qrHistory, setQrHistory] = useState<ParentLockHistory[]>([]);
@@ -41,30 +47,40 @@ export const ParentQRGeneratorScreen: React.FC = () => {
 
     // Meta Data State
     const [allCategories, setAllCategories] = useState<AppCategory[]>([]);
-    const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+    const [selectedCategories, setSelectedCategories] = useState<string[]>(scheduleData?.blockedCategories || []);
     const [isCategoryPickerVisible, setIsCategoryPickerVisible] = useState(false);
 
     const [isStale, setIsStale] = useState(false);
     const [lastGeneratedConfig, setLastGeneratedConfig] = useState<string | null>(null);
 
     // Platform (Generic parent assumes platform independent or follows general standard)
-    const [lockMethod, setLockMethod] = useState<'FULL' | 'CATEGORY' | 'APP'>('FULL');
+    const initLockType = (scheduleData?.lockType === 'APP_ONLY' || scheduleData?.lockType === 'APP' || scheduleData?.lock_type === 'APP') ? 'APP' : 'FULL';
+    const [lockMethod, setLockMethod] = useState<'FULL' | 'CATEGORY' | 'APP'>(scheduleData ? initLockType as any : 'FULL');
     const [isAppPickerVisible, setIsAppPickerVisible] = useState(false);
     const [installedApps, setInstalledApps] = useState<{ label: string, packageName: string }[]>([]);
 
 
     // Schedule State
-    const getRoundedDate = (date: Date) => {
-        const rounded = new Date(date);
-        rounded.setMinutes(Math.round(rounded.getMinutes() / 5) * 5);
-        rounded.setSeconds(0);
-        rounded.setMilliseconds(0);
-        return rounded;
+    const getInitDate = (timeStr?: string) => {
+        if (!timeStr) {
+            const rounded = new Date();
+            rounded.setMinutes(Math.round(rounded.getMinutes() / 5) * 5);
+            rounded.setSeconds(0);
+            rounded.setMilliseconds(0);
+            return rounded;
+        }
+        const [h, m] = timeStr.split(':');
+        const d = new Date();
+        d.setHours(parseInt(h) || 0, parseInt(m) || 0, 0, 0);
+        return d;
     };
 
-    const [startTime, setStartTime] = useState(getRoundedDate(new Date()));
-    const [endTime, setEndTime] = useState(getRoundedDate(new Date(Date.now() + 3600000)));
-    const [selectedDays, setSelectedDays] = useState<string[]>(['월', '화', '수', '목', '금']);
+    const EN_TO_KO: Record<string, string> = { 'MON': '월', 'TUE': '화', 'WED': '수', 'THU': '목', 'FRI': '금', 'SAT': '토', 'SUN': '일' };
+    const initDays = (scheduleData?.days || []).map((d: string) => EN_TO_KO[d] || d);
+
+    const [startTime, setStartTime] = useState(getInitDate(scheduleData?.startTime || scheduleData?.start_time));
+    const [endTime, setEndTime] = useState(getInitDate(scheduleData?.endTime || scheduleData?.end_time || '23:59'));
+    const [selectedDays, setSelectedDays] = useState<string[]>(scheduleData ? initDays : ['월', '화', '수', '목', '금']);
 
     const [isTimePickerVisible, setIsTimePickerVisible] = useState(false);
     const [pickerTarget, setPickerTarget] = useState<'start' | 'end'>('start');
@@ -226,8 +242,7 @@ export const ParentQRGeneratorScreen: React.FC = () => {
                 const diff = Math.floor((endTime.getTime() - startTime.getTime()) / 60000);
                 finalDuration = diff > 0 ? diff : (24 * 60 + diff);
 
-                // Auto-save to server for scheduled locks
-                const saveRes = await ParentChildService.createChildSchedule(selectedChildId, {
+                const schedulePayload = {
                     name: lockTitle,
                     startTime: sStr,
                     endTime: eStr,
@@ -235,8 +250,15 @@ export const ParentQRGeneratorScreen: React.FC = () => {
                     lockType: lockMethod === 'FULL' ? 'FULL' : 'APP',
                     blockedApps: lockMethod === 'APP' ? selectedApps : undefined,
                     blockedCategories: lockMethod === 'CATEGORY' ? selectedCategories : undefined,
-                    isActive: true
-                } as any);
+                    isActive: scheduleData?.isActive ?? true
+                };
+
+                let saveRes;
+                if (mode === 'EDIT') {
+                    saveRes = await ParentChildService.updateChildSchedule(selectedChildId, editScheduleId, schedulePayload as any);
+                } else {
+                    saveRes = await ParentChildService.createChildSchedule(selectedChildId, schedulePayload as any);
+                }
 
                 if (!saveRes.success) {
                     console.log("Server schedule save failed, but QR will still be generated");
@@ -288,6 +310,32 @@ export const ParentQRGeneratorScreen: React.FC = () => {
         }
     };
 
+    const handleDelete = async () => {
+        showAlert({
+            title: "스케줄 삭제",
+            message: "이 스케줄을 삭제하시겠습니까?",
+            cancelText: "취소",
+            confirmText: "삭제",
+            onConfirm: async () => {
+                setIsGenerating(true);
+                try {
+                    const result = await ParentChildService.deleteChildSchedule(selectedChildId, editScheduleId);
+                    if (result.success) {
+                        try {
+                            await LockService.syncSchedules();
+                        } catch (e) { }
+                        goBack();
+                    } else {
+                        showAlert({ title: "오류", message: result.message || "삭제에 실패했습니다." });
+                    }
+                } catch (e) {
+                    showAlert({ title: "오류", message: "네트워크 오류가 발생했습니다." });
+                } finally {
+                    setIsGenerating(false);
+                }
+            }
+        });
+    };
 
     const handleDownload = async () => {
         if (!cardRef.current) return;
@@ -316,50 +364,56 @@ export const ParentQRGeneratorScreen: React.FC = () => {
 
     return (
         <View style={styles.container}>
-            <Header title="자녀 관리용 QR 생성" />
+            <Header title={mode === 'EDIT' ? "예약 스케줄 변경" : "자녀 관리용 QR 생성"} showBack={mode === 'EDIT'} onBack={() => goBack()} />
 
-            {/* Child Selection Refactored */}
-            <View style={styles.childSelectRow}>
-                <Typography bold style={styles.childSelectLabel}>자녀선택</Typography>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.childBoxContainer}>
-                    {children.length > 1 && (
-                        <TouchableOpacity
-                            style={[styles.childBox, selectedChildId === 'all' && styles.childBoxActive]}
-                            onPress={() => setSelectedChildId('all')}
-                        >
-                            <Typography color={selectedChildId === 'all' ? '#FFF' : Colors.text} bold={selectedChildId === 'all'}>전체</Typography>
-                        </TouchableOpacity>
-                    )}
-                    {children.map(child => (
-                        <TouchableOpacity
-                            key={child.id}
-                            style={[styles.childBox, selectedChildId === child.id && styles.childBoxActive]}
-                            onPress={() => setSelectedChildId(child.id)}
-                        >
-                            <Typography color={selectedChildId === child.id ? '#FFF' : Colors.text} bold={selectedChildId === child.id}>{child.childName}</Typography>
-                        </TouchableOpacity>
-                    ))}
-                </ScrollView>
-            </View>
+            {/* Child Selection & Tabs (Hidden in EDIT mode) */}
+            {mode !== 'EDIT' && (
+                <>
+                    <View style={styles.childSelectRow}>
+                        <Typography bold style={styles.childSelectLabel}>자녀선택</Typography>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.childBoxContainer}>
+                            {children.length > 1 && (
+                                <TouchableOpacity
+                                    style={[styles.childBox, selectedChildId === 'all' && styles.childBoxActive]}
+                                    onPress={() => setSelectedChildId('all')}
+                                >
+                                    <Typography color={selectedChildId === 'all' ? '#FFF' : Colors.text} bold={selectedChildId === 'all'}>전체</Typography>
+                                </TouchableOpacity>
+                            )}
+                            {children.map(child => (
+                                <TouchableOpacity
+                                    key={child.id}
+                                    style={[styles.childBox, selectedChildId === child.id && styles.childBoxActive]}
+                                    onPress={() => setSelectedChildId(child.id)}
+                                >
+                                    <Typography color={selectedChildId === child.id ? '#FFF' : Colors.text} bold={selectedChildId === child.id}>{child.childName}</Typography>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
 
-            <View style={styles.tabContainer}>
-                <TouchableOpacity style={[styles.tab, qrType === 'INSTANT' && styles.activeTab]} onPress={() => { setQrType('INSTANT'); setQrValue(""); }}>
-                    <Typography bold={qrType === 'INSTANT'} color={qrType === 'INSTANT' ? Colors.primary : Colors.textSecondary}>즉시 잠금</Typography>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.tab, qrType === 'SCHEDULED' && styles.activeTab]} onPress={() => { setQrType('SCHEDULED'); setQrValue(""); }}>
-                    <Typography bold={qrType === 'SCHEDULED'} color={qrType === 'SCHEDULED' ? Colors.primary : Colors.textSecondary}>예약 잠금</Typography>
-                </TouchableOpacity>
-            </View>
+                    <View style={styles.tabContainer}>
+                        <TouchableOpacity style={[styles.tab, qrType === 'INSTANT' && styles.activeTab]} onPress={() => { setQrType('INSTANT'); setQrValue(""); }}>
+                            <Typography bold={qrType === 'INSTANT'} color={qrType === 'INSTANT' ? Colors.primary : Colors.textSecondary}>즉시 잠금</Typography>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.tab, qrType === 'SCHEDULED' && styles.activeTab]} onPress={() => { setQrType('SCHEDULED'); setQrValue(""); }}>
+                            <Typography bold={qrType === 'SCHEDULED'} color={qrType === 'SCHEDULED' ? Colors.primary : Colors.textSecondary}>예약 잠금</Typography>
+                        </TouchableOpacity>
+                    </View>
+                </>
+            )}
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
-                {/* History Section */}
-                <View style={styles.historySection}>
-                    <TouchableOpacity style={styles.historyButton} onPress={() => setIsHistoryModalVisible(true)}>
-                        <Icon name="time-outline" size={20} color={Colors.primary} />
-                        <Typography bold color={Colors.primary}>이전 이력에서 불러오기</Typography>
-                        <Icon name="chevron-forward" size={16} color={Colors.primary} />
-                    </TouchableOpacity>
-                </View>
+                {/* History Section (Hidden in EDIT mode) */}
+                {mode !== 'EDIT' && (
+                    <View style={styles.historySection}>
+                        <TouchableOpacity style={styles.historyButton} onPress={() => setIsHistoryModalVisible(true)}>
+                            <Icon name="time-outline" size={20} color={Colors.primary} />
+                            <Typography bold color={Colors.primary}>이전 이력에서 불러오기</Typography>
+                            <Icon name="chevron-forward" size={16} color={Colors.primary} />
+                        </TouchableOpacity>
+                    </View>
+                )}
 
                 {/* History Modal */}
                 <Modal visible={isHistoryModalVisible} transparent animationType="slide">
@@ -506,6 +560,16 @@ export const ParentQRGeneratorScreen: React.FC = () => {
                             </TouchableOpacity>
                         </View>
                     )}
+
+                    {mode === 'EDIT' && (
+                        <TouchableOpacity
+                            style={[styles.deleteButton, { marginTop: 12 }]}
+                            onPress={handleDelete}
+                            disabled={isGenerating}
+                        >
+                            <Typography bold color="#FF4B4B">스케줄 삭제</Typography>
+                        </TouchableOpacity>
+                    )}
                 </View>
             </ScrollView>
 
@@ -594,6 +658,7 @@ const styles = StyleSheet.create({
     actionContainer: { marginTop: 20, gap: 12 },
     generateButton: { flexDirection: 'row', backgroundColor: Colors.primary, padding: 16, borderRadius: 16, justifyContent: 'center', alignItems: 'center', gap: 10 },
     saveButton: { flexDirection: 'row', backgroundColor: Colors.primary + '10', padding: 16, borderRadius: 16, justifyContent: 'center', alignItems: 'center', gap: 10, borderWidth: 1, borderColor: Colors.primary },
+    deleteButton: { backgroundColor: 'transparent', padding: 18, borderRadius: 16, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#FF4B4B22' },
     secondaryActions: { flexDirection: 'row', gap: 12 },
     downloadButtonActive: { flex: 1, flexDirection: 'row', backgroundColor: '#34C759', padding: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center', gap: 8 },
     shareButtonActive: { flex: 1, flexDirection: 'row', backgroundColor: Colors.primary, padding: 14, borderRadius: 12, justifyContent: 'center', alignItems: 'center', gap: 8 },

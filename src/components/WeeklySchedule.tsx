@@ -17,7 +17,14 @@ const DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 export const WeeklySchedule: React.FC<Props> = ({ schedules, onToggle, onPressItem, onGenerateQR }) => {
     const [selectedDay, setSelectedDay] = useState<string>(DAYS[new Date().getDay()]);
 
-    const filteredSchedules = schedules.filter(s => s.days.includes(selectedDay));
+    const filteredSchedules = schedules.filter(s => {
+        const dayMap: Record<string, string> = {
+            '일': 'SUN', '월': 'MON', '화': 'TUE', '수': 'WED', '목': 'THU', '금': 'FRI', '토': 'SAT',
+            'SUN': '일', 'MON': '월', 'TUE': '화', 'WED': '수', 'THU': '목', 'FRI': '금', 'SAT': '토'
+        };
+        const selectedDayEng = dayMap[selectedDay];
+        return s.days.includes(selectedDay) || (selectedDayEng && s.days.includes(selectedDayEng));
+    });
 
     return (
         <View style={styles.container}>

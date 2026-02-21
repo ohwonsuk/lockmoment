@@ -34,6 +34,7 @@ export const QRScannerScreen: React.FC = () => {
     const [isApplying, setIsApplying] = useState(false);
     const [allCategories, setAllCategories] = useState<AppCategory[]>([]);
     const [userRole, setUserRole] = useState<string | null>(null);
+    const [iosCounts, setIosCounts] = useState({ apps: 0, categories: 0 });
 
     useEffect(() => {
         const loadInitialData = async () => {
@@ -104,8 +105,22 @@ export const QRScannerScreen: React.FC = () => {
                     setIsRegistrationModalVisible(true);
                 } else if (response.lockPolicy) {
                     setScanResult(response.lockPolicy);
+                    if (isIOS) {
+                        try {
+                            const appCount = await NativeLockControl.getSelectedAppCount();
+                            const catCount = await NativeLockControl.getSelectedCategoryCount();
+                            setIosCounts({
+                                apps: appCount || 0,
+                                categories: catCount || 0
+                            });
+                        } catch (e) {
+                            console.error("Failed to get iOS selection count:", e);
+                        }
+                    }
                     setIsConfirmModalVisible(true);
                 } else if (response.purpose === 'ATTENDANCE_ONLY') {
+                    setIsProcessing(false);
+                    isScanningRef.current = false;
                     showAlert({
                         title: "출석 완료",
                         message: "출석이 성공적으로 확인되었습니다.",
@@ -120,6 +135,8 @@ export const QRScannerScreen: React.FC = () => {
 
         } catch (error: any) {
             console.error("QR Scan Error:", error);
+            setIsProcessing(false);
+            isScanningRef.current = false;
             showAlert({
                 title: "오류",
                 message: error.message || "QR 처리 중 오류가 발생했습니다.",
@@ -127,12 +144,13 @@ export const QRScannerScreen: React.FC = () => {
                 confirmText: "재시도",
                 onCancel: () => navigate('Dashboard'),
                 onConfirm: () => {
-                    isScanningRef.current = false;
-                    setIsProcessing(false);
-                    setRegistrationInfo(null);
-                    setScanResult(null);
+                    // Reset will happen automatically on next scan attempt if needed
+                    // but we can also do it here
                 }
             });
+        } finally {
+            // Processing should be false once the modal is shown or error is handled
+            // But we keep it true while the modal is opening to avoid double-triggers
         }
     };
 
@@ -218,18 +236,24 @@ export const QRScannerScreen: React.FC = () => {
 
             // iOS 유의사항: APP 모드인데 선택된 이력이 없는 경우 Picker 노출 (FULL은 Picker 불필요)
             if (isIOS && lock_type !== 'FULL') {
-                const count = await NativeLockControl.getSelectedAppCount();
+                const aCount = await NativeLockControl.getSelectedAppCount();
+                const cCount = await NativeLockControl.getSelectedCategoryCount();
+                const count = (aCount || 0) + (cCount || 0);
+
                 if (count === 0) {
+                    setIsConfirmModalVisible(false); // Hide modal first so alert is visible!
                     await new Promise<void>((resolve) => {
                         showAlert({
                             title: "잠금 앱 설정 필요",
-                            message: "iOS 보안 정책상 잠금 대상 앱을 직접 선택해 주셔야 합니다.\n다음 화면에서 차단할 앱들을 선택해 주세요.",
+                            message: "iOS 보안 정책상 잠금 대상 앱 또는 카테고리를 1개 이상 직접 선택해 주셔야 합니다.\n다음 화면에서 제한할 항목을 선택해 주세요.",
                             onConfirm: () => resolve()
                         });
                     });
                     const newCount = await NativeLockControl.presentFamilyActivityPicker('APP') as number;
                     if (newCount === 0) {
                         setIsApplying(false);
+                        setIsProcessing(false);
+                        isScanningRef.current = false;
                         return; // User cancelled or didn't select anything
                     }
                 }
@@ -238,6 +262,28 @@ export const QRScannerScreen: React.FC = () => {
             // 잠금 실행 (예약 vs 즉시)
             if (timeWindow && days && days.length > 0) {
                 const [start, end] = timeWindow.split('-');
+
+                const currentSchedules = await StorageService.getSchedules();
+                const isDuplicate = currentSchedules.some(s =>
+                    s.name === name &&
+                    s.startTime === start &&
+                    s.endTime === end &&
+                    JSON.stringify((s.days || []).slice().sort()) === JSON.stringify([...days].sort()) &&
+                    s.source === 'LOCAL'
+                );
+
+                if (isDuplicate) {
+                    setIsConfirmModalVisible(false);
+                    setIsApplying(false);
+                    setIsProcessing(false);
+                    isScanningRef.current = false;
+                    showAlert({
+                        title: "안내",
+                        message: "이미 동일한 예약 잠금이 등록되어 있습니다.",
+                        onConfirm: () => navigate('Dashboard')
+                    });
+                    return;
+                }
 
                 // 1. Save to Storage for persistence and list visibility
                 const newSchedule: Schedule = {
@@ -252,12 +298,18 @@ export const QRScannerScreen: React.FC = () => {
                     source: 'LOCAL',
                     isReadOnly: userRole === 'STUDENT' || userRole === 'CHILD'
                 };
+
                 await StorageService.saveSchedule(newSchedule);
+                console.log("[QRScanner] Schedule saved to storage:", newSchedule.id);
 
-                // 2. Sync with Native (LockService handles scheduling)
-                await LockService.syncSchedules();
+                // Close modal immediately so the UI doesn't look stuck
+                // 2. Sync with Native in background (DO NOT AWAIT - to prevent UI hang)
+                console.log("[QRScanner] Triggering background sync...");
+                LockService.syncSchedules()
+                    .then(() => console.log("[QRScanner] Background sync completed"))
+                    .catch(e => console.error("[QRScanner] Background sync failed:", e));
 
-                setIsConfirmModalVisible(false);
+                // Success alert and navigate
                 showAlert({
                     title: "예약 등록 완료",
                     message: `[${name}] 예약 잠금이 등록되었습니다.\n설정된 시간에 자동으로 잠금이 시작됩니다.`,
@@ -273,6 +325,10 @@ export const QRScannerScreen: React.FC = () => {
                 );
 
                 setIsConfirmModalVisible(false);
+                setIsApplying(false);
+                setIsProcessing(false);
+                isScanningRef.current = false;
+
                 showAlert({
                     title: "잠금 활성화",
                     message: `[${name}] 집중 모드가 시작되었습니다.`,
@@ -283,7 +339,10 @@ export const QRScannerScreen: React.FC = () => {
             console.error("Lock Start Error:", error);
             showAlert({ title: "오류", message: "잠금을 시작하는 중 오류가 발생했습니다." });
         } finally {
+            setIsConfirmModalVisible(false);
             setIsApplying(false);
+            setIsProcessing(false);
+            isScanningRef.current = false;
         }
     };
 
@@ -342,14 +401,19 @@ export const QRScannerScreen: React.FC = () => {
                                 <Typography variant="caption" color={Colors.textSecondary}>잠금 시간</Typography>
                                 <Typography bold style={{ fontSize: 18 }}>
                                     {scanResult?.timeWindow && scanResult?.days ?
-                                        `${scanResult.timeWindow} (${scanResult.days.join(',')})` :
+                                        `${scanResult.timeWindow} (${scanResult.days.map(d => {
+                                            const map: Record<string, string> = { 'MON': '월', 'TUE': '화', 'WED': '수', 'THU': '목', 'FRI': '금', 'SAT': '토', 'SUN': '일' };
+                                            return map[d] || d;
+                                        }).join(',')})` :
                                         `${scanResult?.durationMinutes}분`}
                                 </Typography>
                             </View>
 
                             <View style={styles.infoRow}>
                                 <Typography variant="caption" color={Colors.textSecondary}>
-                                    잠금 대상 {scanResult?.lock_type === 'FULL' ? '(전체)' : `(${((scanResult?.allowedApps?.length || 0) + (scanResult?.blockedCategories?.length || 0))})`}
+                                    잠금 대상 {scanResult?.lock_type === 'FULL' ? '(전체)' : (
+                                        isIOS ? `(카테고리 ${iosCounts.categories}개, 앱 ${iosCounts.apps}개)` : `(${((scanResult?.allowedApps?.length || 0) + (scanResult?.blockedCategories?.length || 0))})`
+                                    )}
                                 </Typography>
                                 <View style={styles.appsList}>
                                     {/* 카테고리 표시 */}
@@ -377,7 +441,9 @@ export const QRScannerScreen: React.FC = () => {
 
                             <View style={styles.noticeBox}>
                                 <Typography style={{ fontSize: 12, color: Colors.textSecondary }}>
-                                    확인 버튼을 누르면 즉시 잠금이 시작됩니다.
+                                    {(scanResult?.timeWindow && scanResult?.days && scanResult.days.length > 0) ?
+                                        '확인 버튼을 누르면 예정된 시간에 잠금이 시작됩니다.' :
+                                        '확인 버튼을 누르면 즉시 잠금이 시작됩니다.'}
                                     {isIOS && "\n(iOS는 최초 1회 앱 선택이 필요할 수 있습니다)"}
                                 </Typography>
                             </View>
@@ -389,6 +455,8 @@ export const QRScannerScreen: React.FC = () => {
                                 onPress={() => {
                                     setIsConfirmModalVisible(false);
                                     setIsProcessing(false);
+                                    isScanningRef.current = false;
+                                    navigate('Dashboard');
                                 }}
                             >
                                 <Typography bold>취소</Typography>
